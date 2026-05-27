@@ -82,27 +82,23 @@ export default function RecordCard({
 
       {type === "wishlist" ? (
         <button
-          onClick={() =>
-            onChangeStatus(
-              item,
-              "owned"
-            )
-          }
+          onClick={(e) => {
+            e.stopPropagation()
+            onChangeStatus(item, "owned")
+          }}
           style={actionButtonStyle}
         >
           +
         </button>
       ) : (
         <button
-          onClick={() =>
+          onClick={(e) => {
+            e.stopPropagation()
             onToggleFlag(item)
-          }
+          }}
           style={{
             ...favoriteButtonStyle,
-
-            color: item.favorite
-              ? "#FACC15"
-              : "#666",
+            color: item.favorite ? "#FACC15" : "#666",
           }}
         >
           {item.favorite ? "★" : "☆"}

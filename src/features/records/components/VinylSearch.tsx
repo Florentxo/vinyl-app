@@ -17,6 +17,10 @@ interface VinylSearchProps {
   onAdd: (record: Omit<VinylRecord, "id" | "favorite" | "status">) => void
 }
 
+// Cache global — persiste pendant toute la session
+const artistCache = new Map<string, Artist[]>()
+const releaseCache = new Map<string, Release[]>()
+
 export default function VinylSearch({ onAdd }: VinylSearchProps) {
   const [step, setStep] = useState<"artist" | "album">("artist")
   const [artistQuery, setArtistQuery] = useState("")
@@ -33,6 +37,12 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
       return
     }
 
+    // Vérifie le cache d'abord
+    if (artistCache.has(artistQuery)) {
+      setArtists(artistCache.get(artistQuery)!)
+      return
+    }
+
     if (debounceRef.current) clearTimeout(debounceRef.current)
 
     debounceRef.current = setTimeout(async () => {
@@ -43,17 +53,26 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
           { headers: { "User-Agent": "VinylApp/1.0 (contact@vinylapp.com)" } }
         )
         const data = await res.json()
-        setArtists(data.artists?.map((a: any) => ({ id: a.id, name: a.name })) ?? [])
+        const results = data.artists?.map((a: any) => ({ id: a.id, name: a.name })) ?? []
+        artistCache.set(artistQuery, results)
+        setArtists(results)
       } catch {
         setArtists([])
       }
       setLoadingArtists(false)
-    }, 400)
+    }, 200) // ← réduit à 200ms
   }, [artistQuery])
 
   async function fetchReleases(artist: Artist) {
     setSelectedArtist(artist)
     setStep("album")
+
+    // Vérifie le cache
+    if (releaseCache.has(artist.id)) {
+      setReleases(releaseCache.get(artist.id)!)
+      return
+    }
+
     setLoadingReleases(true)
     try {
       const res = await fetch(
@@ -62,14 +81,14 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
       )
       const data = await res.json()
       const groups = data["release-groups"] ?? []
-      setReleases(
-        groups.map((r: any) => ({
-          id: r.id,
-          title: r.title,
-          date: r["first-release-date"]?.slice(0, 4),
-          genres: r.genres?.map((g: any) => g.name) ?? [],
-        }))
-      )
+      const results = groups.map((r: any) => ({
+        id: r.id,
+        title: r.title,
+        date: r["first-release-date"]?.slice(0, 4),
+        genres: r.genres?.map((g: any) => g.name) ?? [],
+      }))
+      releaseCache.set(artist.id, results)
+      setReleases(results)
     } catch {
       setReleases([])
     }

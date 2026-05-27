@@ -1,7 +1,7 @@
 {
-  "name": "Vinyl Collection",
+  "name": "Vinyl Collec'",
   "short_name": "VinylApp",
-  "description": "Manage your vinyl collection",
+  "description": "Manage your Vinyl Collec'",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111111",
