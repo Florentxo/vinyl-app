@@ -112,8 +112,8 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
     setSelectedRecord(null)
   }
 
-  const spotifyUrl = `https://open.spotify.com/search/${encodeURIComponent(`${selectedRecord.artist} ${selectedRecord.album}`)}`
-  const youtubeUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${selectedRecord.artist} ${selectedRecord.album}`)}`
+  const spotifyUrl = `spotify:search:${encodeURIComponent(`${selectedRecord.artist} ${selectedRecord.album}`)}`
+  const youtubeUrl = `youtube:search:${encodeURIComponent(`${selectedRecord.artist} ${selectedRecord.album}`)}`
   const deezerUrl = `https://www.deezer.com/search/${encodeURIComponent(`${selectedRecord.artist} ${selectedRecord.album}`)}`
 
   return (
