@@ -32,12 +32,19 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
   setSelectedRecord: (record) => set({ selectedRecord: record }),
 
   addRecord: async (record) => {
+    const { records } = get()
+    const alreadyExists = records.some(
+      (r) =>
+        r.artist.toLowerCase().trim() === record.artist.toLowerCase().trim() &&
+        r.album.toLowerCase().trim() === record.album.toLowerCase().trim()
+    )
+    if (alreadyExists) return
+
     const { data: { session } } = await supabase.auth.getSession()
     const user_id = session?.user.id
     if (!user_id) return
 
     const recordWithUser = { ...record, user_id }
-
     const { error } = await supabase.from("records").insert(recordWithUser)
     if (!error) set((state) => ({ records: [...state.records, recordWithUser] }))
   },

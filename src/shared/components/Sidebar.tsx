@@ -1,10 +1,9 @@
 import { useState, useEffect } from "react"
 import { NavLink, useNavigate } from "react-router-dom"
-import { useAuthStore } from "../../features/auth/store/authStore"
-import { APP_NAME } from "../../config"  
+import { useAuthStore } from "../../features/auth/store/authStore" 
 
 const menus = [
-  { path: "/collection", label: "Collection", icon: "🎵" },
+  { path: "/collection", label: "Home", icon: "🎵" },
   { path: "/favorites", label: "Favorites", icon: "★" },
   { path: "/wishlist", label: "Wishlist", icon: "🎯" },
 ]
@@ -94,7 +93,7 @@ export default function Sidebar() {
 
   return (
     <div style={{
-      width: "160px",
+      width: "100px",
       background: "#0D0D0D",
       padding: "20px 12px",
       display: "flex",
@@ -102,15 +101,18 @@ export default function Sidebar() {
       gap: "8px",
       flexShrink: 0,
     }}>
-      <h1 style={{
-        color: "white",
-        fontSize: "16px",
-        marginBottom: "24px",
-        textAlign: "center",
-        letterSpacing: "2px",
-      }}>
-        {APP_NAME}
-      </h1>
+      <img
+        src="/icon-192x192.png"
+        alt="Vinyl Collec'"
+        style={{
+          width: isMobile ? "36px" : "48px",
+          height: isMobile ? "36px" : "48px",
+          borderRadius: "10px",
+          marginBottom: "24px",
+          display: "block",
+          margin: "0 auto 24px auto",
+        }}
+      />
 
       {menus.map((menu) => (
         <NavLink

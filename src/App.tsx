@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom"
 
 import Layout from "./shared/components/Layout"
 import CollectionView from "./features/records/views/CollectionView"
@@ -18,6 +18,29 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) return null
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
+}
+
+function PersistentViews() {
+  const location = useLocation()
+  const setSelectedRecord = useRecordsStore((state) => state.setSelectedRecord)
+
+  useEffect(() => {
+    setSelectedRecord(null)
+  }, [location.pathname])
+
+  return (
+    <>
+      <div style={{ display: location.pathname === "/collection" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+        <CollectionView />
+      </div>
+      <div style={{ display: location.pathname === "/favorites" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+        <FavoritesView />
+      </div>
+      <div style={{ display: location.pathname === "/wishlist" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+        <WishlistView />
+      </div>
+    </>
+  )
 }
 
 export default function App() {
@@ -43,12 +66,7 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Layout>
-                <Routes>
-                  <Route path="/" element={<Navigate to="/collection" replace />} />
-                  <Route path="/collection" element={<CollectionView />} />
-                  <Route path="/favorites" element={<FavoritesView />} />
-                  <Route path="/wishlist" element={<WishlistView />} />
-                </Routes>
+                <PersistentViews />
               </Layout>
             </ProtectedRoute>
           }

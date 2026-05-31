@@ -2,24 +2,28 @@ import { useState, useEffect, useRef } from "react"
 import type { VinylRecord } from "../types/record"
 
 interface Artist {
-  id: string
+  id: number
   name: string
+  thumb?: string
 }
 
 interface Release {
-  id: string
+  id: number
   title: string
-  date?: string
-  genres?: string[]
+  year?: string
+  genre?: string
+  style?: string
+  cover_url?: string
+  master_id?: number
+  format?: string
 }
 
 interface VinylSearchProps {
   onAdd: (record: Omit<VinylRecord, "id" | "favorite" | "status">) => void
 }
 
-// Cache global — persiste pendant toute la session
-const artistCache = new Map<string, Artist[]>()
-const releaseCache = new Map<string, Release[]>()
+const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN
+const releaseCache = new Map<number, Release[]>()
 
 export default function VinylSearch({ onAdd }: VinylSearchProps) {
   const [step, setStep] = useState<"artist" | "album">("artist")
@@ -31,15 +35,13 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
   const [loadingReleases, setLoadingReleases] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // =================================================
+  // SEARCH ARTISTS
+  // =================================================
+
   useEffect(() => {
     if (artistQuery.length < 2) {
       setArtists([])
-      return
-    }
-
-    // Vérifie le cache d'abord
-    if (artistCache.has(artistQuery)) {
-      setArtists(artistCache.get(artistQuery)!)
       return
     }
 
@@ -49,25 +51,32 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
       setLoadingArtists(true)
       try {
         const res = await fetch(
-          `https://musicbrainz.org/ws/2/artist/?query=${encodeURIComponent(artistQuery)}&limit=6&fmt=json`,
-          { headers: { "User-Agent": "VinylApp/1.0 (contact@vinylapp.com)" } }
+          `https://api.discogs.com/database/search?q=${encodeURIComponent(artistQuery)}&type=artist&per_page=10&token=${DISCOGS_TOKEN}`
         )
         const data = await res.json()
-        const results = data.artists?.map((a: any) => ({ id: a.id, name: a.name })) ?? []
-        artistCache.set(artistQuery, results)
+        const results: Artist[] = data.results?.map((a: any) => ({
+          id: a.id,
+          name: a.title,
+          thumb: a.thumb || "",
+        })) ?? []
+
+        results.sort((a, b) => a.name.localeCompare(b.name))
         setArtists(results)
       } catch {
         setArtists([])
       }
       setLoadingArtists(false)
-    }, 200) // ← réduit à 200ms
+    }, 200)
   }, [artistQuery])
+
+  // =================================================
+  // FETCH RELEASES
+  // =================================================
 
   async function fetchReleases(artist: Artist) {
     setSelectedArtist(artist)
     setStep("album")
 
-    // Vérifie le cache
     if (releaseCache.has(artist.id)) {
       setReleases(releaseCache.get(artist.id)!)
       return
@@ -76,17 +85,22 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
     setLoadingReleases(true)
     try {
       const res = await fetch(
-        `https://musicbrainz.org/ws/2/release-group?artist=${artist.id}&type=album&limit=20&fmt=json`,
-        { headers: { "User-Agent": "VinylApp/1.0 (contact@vinylapp.com)" } }
+        `https://api.discogs.com/artists/${artist.id}/releases?sort=year&sort_order=asc&per_page=100&token=${DISCOGS_TOKEN}`
       )
       const data = await res.json()
-      const groups = data["release-groups"] ?? []
-      const results = groups.map((r: any) => ({
-        id: r.id,
-        title: r.title,
-        date: r["first-release-date"]?.slice(0, 4),
-        genres: r.genres?.map((g: any) => g.name) ?? [],
-      }))
+
+      const results: Release[] = (data.releases ?? [])
+        .filter((r: any) => r.type === "master" && r.role === "Main")
+        .map((r: any) => ({
+          id: r.id,
+          master_id: r.id,
+          title: r.title,
+          year: r.year?.toString(),
+          cover_url: r.thumb || "",
+          format: r.format || "",
+        }))
+
+      results.sort((a, b) => (a.year ?? "").localeCompare(b.year ?? ""))
       releaseCache.set(artist.id, results)
       setReleases(results)
     } catch {
@@ -95,26 +109,44 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
     setLoadingReleases(false)
   }
 
+  // =================================================
+  // SELECT ALBUM
+  // =================================================
+
   async function selectAlbum(release: Release) {
-    let cover_url = ""
+    let genre = ""
+    let style = ""
+    let cover_url = release.cover_url || ""
+
     try {
-      const res = await fetch(`https://coverartarchive.org/release-group/${release.id}`)
+      const endpoint = release.master_id
+        ? `https://api.discogs.com/masters/${release.master_id}`
+        : `https://api.discogs.com/releases/${release.id}`
+
+      const res = await fetch(`${endpoint}?token=${DISCOGS_TOKEN}`)
       const data = await res.json()
-      cover_url = data.images?.[0]?.thumbnails?.small ?? data.images?.[0]?.image ?? ""
+
+      genre = data.genres?.[0] ?? ""
+      style = data.styles?.[0] ?? ""
+      if (data.images?.[0]?.uri) cover_url = data.images[0].uri
     } catch {
-      cover_url = ""
+      // keep defaults
     }
 
     onAdd({
       artist: selectedArtist!.name,
       album: release.title,
-      year: release.date ?? "",
-      genre: release.genres?.[0] ?? "",
+      year: release.year ?? "",
+      genre: style ? `${genre} / ${style}` : genre,
       cover_url,
     })
 
     reset()
   }
+
+  // =================================================
+  // RESET
+  // =================================================
 
   function reset() {
     setStep("artist")
@@ -124,9 +156,14 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
     setReleases([])
   }
 
+  // =================================================
+  // RENDER
+  // =================================================
+
   return (
     <div style={{ marginBottom: "24px" }}>
 
+      {/* STEP ARTIST */}
       {step === "artist" && (
         <div style={{ position: "relative" }}>
           <input
@@ -153,7 +190,18 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
                   onMouseEnter={(e) => (e.currentTarget.style.background = "#2a2a2a")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
-                  {artist.name}
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    {artist.thumb ? (
+                      <img
+                        src={artist.thumb}
+                        alt={artist.name}
+                        style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#333", flexShrink: 0 }} />
+                    )}
+                    <span>{artist.name}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -161,11 +209,17 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
         </div>
       )}
 
+      {/* STEP ALBUM */}
       {step === "album" && (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
             <button onClick={reset} style={backButtonStyle}>←</button>
             <span style={{ color: "white", fontWeight: "bold" }}>{selectedArtist?.name}</span>
+            {!loadingReleases && (
+              <span style={{ color: "#555", fontSize: "13px" }}>
+                {releases.length} release{releases.length !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
 
           {loadingReleases && (
@@ -181,9 +235,23 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#2a2a2a")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "#1E1E1E")}
               >
-                <span style={{ color: "white", fontSize: "15px" }}>{release.title}</span>
-                {release.date && (
-                  <span style={{ color: "#666", fontSize: "13px" }}>{release.date}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {release.cover_url && (
+                    <img
+                      src={release.cover_url}
+                      alt={release.title}
+                      style={{ width: "36px", height: "36px", borderRadius: "4px", objectFit: "cover", flexShrink: 0 }}
+                    />
+                  )}
+                  <div>
+                    <span style={{ color: "white", fontSize: "15px", display: "block" }}>{release.title}</span>
+                    {release.format && (
+                      <span style={{ color: "#555", fontSize: "11px" }}>{release.format}</span>
+                    )}
+                  </div>
+                </div>
+                {release.year && (
+                  <span style={{ color: "#666", fontSize: "13px", flexShrink: 0 }}>{release.year}</span>
                 )}
               </div>
             ))}
@@ -194,6 +262,10 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
     </div>
   )
 }
+
+// =================================================
+// STYLES
+// =================================================
 
 const inputStyle = {
   width: "100%",
@@ -214,12 +286,13 @@ const dropdownStyle = {
   background: "#1E1E1E",
   borderRadius: "12px",
   zIndex: 50,
-  overflow: "hidden",
   boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+  maxHeight: "300px",
+  overflowY: "auto" as const,
 }
 
 const dropdownItemStyle = {
-  padding: "12px 16px",
+  padding: "10px 16px",
   color: "white",
   cursor: "pointer",
   fontSize: "15px",
@@ -240,7 +313,7 @@ const backButtonStyle = {
 const releaseItemStyle = {
   background: "#1E1E1E",
   borderRadius: "10px",
-  padding: "12px 16px",
+  padding: "10px 14px",
   cursor: "pointer",
   display: "flex",
   justifyContent: "space-between",

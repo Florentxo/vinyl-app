@@ -27,10 +27,6 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const changeStatus = useRecordsStore((state) => state.changeStatus)
 
   useEffect(() => {
-    setSelectedRecord(null)
-  }, [type])
-
-  useEffect(() => {
     function handleResize() {
       setIsMobile(window.innerWidth < 900)
     }
@@ -48,7 +44,8 @@ export default function GenericView({ title, type }: GenericViewProps) {
     setSelectedRecord(null)
   }
 
-  const filteredItems = records.filter((item) => {
+  const filteredItems = records
+  .filter((item) => {
     const matchesSearch =
       item.artist.toLowerCase().includes(search.toLowerCase()) ||
       item.album.toLowerCase().includes(search.toLowerCase())
@@ -57,40 +54,70 @@ export default function GenericView({ title, type }: GenericViewProps) {
     if (type === "wishlist") return item.status === "wishlist" && matchesSearch
     return item.status === "owned" && matchesSearch
   })
+  .sort((a, b) => a.artist.localeCompare(b.artist)) // ← ajoute ça
 
   return (
-    <div style={mainStyle}>
+    <div style={{ ...mainStyle, display: "flex", flexDirection: "column" }}>
 
-      {/* HEADER */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "24px" }}>
-        <h1 style={titleStyle}>{title}</h1>
-        <span style={{ color: "#555", fontSize: "16px" }}>
-          {filteredItems.length} vinyl{filteredItems.length !== 1 ? "s" : ""}
-        </span>
+      {/* STICKY HEADER */}
+      <div style={{
+        position: "sticky",
+        top: 0,
+        background: "#111111",
+        zIndex: 10,
+        paddingBottom: "16px",
+      }}>
+
+        {/* TITLE */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "16px" }}>
+          <h1 style={titleStyle}>{title}</h1>
+          <span style={{ color: "#555", fontSize: "16px" }}>
+            {filteredItems.length} vinyl{filteredItems.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        {/* ERROR */}
+        {error && <div style={errorStyle}>{error}</div>}
+
+        {/* DESKTOP — two bars side by side */}
+        {!isMobile && (
+          <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+
+            <div style={{ flex: 1 }}>
+              <p style={{ color: "#555", fontSize: "12px", margin: "0 0 6px 0", letterSpacing: "0.5px" }}>
+                SEARCH
+              </p>
+              <SearchBar value={search} onChange={setSearch} />
+            </div>
+
+            {type !== "favorites" && (
+              <div style={{ flex: 1 }}>
+                <p style={{ color: "#555", fontSize: "12px", margin: "0 0 6px 0", letterSpacing: "0.5px" }}>
+                  ADD A VINYL
+                </p>
+                <VinylSearch
+                  onAdd={(record) => {
+                    addRecord({
+                      ...record,
+                      id: Date.now().toString(),
+                      favorite: false,
+                      status: type === "wishlist" ? "wishlist" : "owned",
+                    })
+                  }}
+                />
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* MOBILE — search bar only */}
+        {isMobile && <SearchBar value={search} onChange={setSearch} />}
+
       </div>
 
-      {/* ERROR */}
-      {error && <div style={errorStyle}>{error}</div>}
-
-      {/* SEARCH */}
-      <SearchBar value={search} onChange={setSearch} />
-
-      {/* VINYL SEARCH — desktop uniquement */}
-      {type !== "favorites" && !isMobile && (
-        <VinylSearch
-          onAdd={(record) => {
-            addRecord({
-              ...record,
-              id: Date.now().toString(),
-              favorite: false,
-              status: type === "wishlist" ? "wishlist" : "owned",
-            })
-          }}
-        />
-      )}
-
-      {/* RECORDS */}
-      <div style={{ ...cardsContainerStyle, paddingBottom: isMobile ? "80px" : "0" }}>
+      {/* SCROLLABLE RECORDS LIST */}
+      <div style={{ ...cardsContainerStyle, paddingBottom: isMobile ? "80px" : "0", overflowY: "auto", flex: 1, }}>
         {filteredItems.map((item) => (
           <RecordCard
             key={item.id}
@@ -104,14 +131,14 @@ export default function GenericView({ title, type }: GenericViewProps) {
         ))}
       </div>
 
-      {/* BOUTON FLOTTANT — mobile uniquement */}
+      {/* FLOATING BUTTON — mobile only */}
       {type !== "favorites" && isMobile && (
         <button onClick={() => setModalOpen(true)} style={fabStyle}>
           +
         </button>
       )}
 
-      {/* MODAL DETAILS — mobile */}
+      {/* DETAILS MODAL — mobile only */}
       {selectedRecord && isMobile && (
         <div style={detailsOverlayStyle} onClick={() => setSelectedRecord(null)}>
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
@@ -168,7 +195,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
             }}>
               {selectedRecord.status === "owned" ? "✓ Owned" : "◎ Wishlist"}
             </div>
-            
+
             {/* DELETE */}
             <button
               onClick={deleteItem}
@@ -186,12 +213,12 @@ export default function GenericView({ title, type }: GenericViewProps) {
             >
               Delete vinyl
             </button>
-            
+
           </div>
         </div>
       )}
 
-      {/* MODAL AJOUT — mobile */}
+      {/* ADD VINYL MODAL — mobile only */}
       {modalOpen && (
         <div style={overlayStyle} onClick={() => setModalOpen(false)}>
           <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
@@ -224,10 +251,11 @@ const mainStyle = {
   minWidth: 0,
   background: "#111111",
   padding: "30px",
-  overflowY: "auto" as const,
   overflowX: "hidden" as const,
   boxSizing: "border-box" as const,
   position: "relative" as const,
+  display: "flex",
+  flexDirection: "column" as const,
 }
 
 const titleStyle = {

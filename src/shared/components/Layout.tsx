@@ -34,7 +34,7 @@ export default function Layout({ children }: LayoutProps) {
     }}>
       {!isMobile && <Sidebar />}
 
-      <div style={{ flex: 1, overflowY: "auto", minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {children}
       </div>
 
