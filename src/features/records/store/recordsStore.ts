@@ -13,6 +13,7 @@ interface RecordsStore {
   deleteRecord: (id: string) => Promise<void>
   toggleFavorite: (id: string) => Promise<void>
   changeStatus: (id: string, status: "owned" | "wishlist") => Promise<void>
+  moveToCollection: (id: string) => Promise<void>
 }
 
 export const useRecordsStore = create<RecordsStore>((set, get) => ({
@@ -79,6 +80,19 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
     if (!error) set((state) => ({
       records: state.records.map((r) =>
         r.id === id ? { ...r, status } : r
+      ),
+    }))
+  },
+
+
+  moveToCollection: async (id: string) => {
+    const { error } = await supabase
+      .from("records")
+      .update({ status: "owned" })
+      .eq("id", id)
+    if (!error) set((state) => ({
+      records: state.records.map((r) =>
+        r.id === id ? { ...r, status: "owned" } : r
       ),
     }))
   },

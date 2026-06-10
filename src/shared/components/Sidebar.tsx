@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react"
-import { NavLink, useNavigate } from "react-router-dom"
-import { useAuthStore } from "../../features/auth/store/authStore" 
+import { useNavigate, NavLink } from "react-router-dom"
+import { useAuthStore } from "../../features/auth/store/authStore"
+import { useIsMobile } from "../hooks/useIsMobile"
 
 const menus = [
   { path: "/collection", label: "Home", icon: "🎵" },
@@ -9,17 +9,9 @@ const menus = [
 ]
 
 export default function Sidebar() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 900)
+  const isMobile = useIsMobile()
   const signOut = useAuthStore((state) => state.signOut)
   const navigate = useNavigate()
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth < 900)
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
 
   async function handleSignOut() {
     await signOut()
@@ -105,10 +97,9 @@ export default function Sidebar() {
         src="/icon-192x192.png"
         alt="Vinyl Collec'"
         style={{
-          width: isMobile ? "36px" : "48px",
-          height: isMobile ? "36px" : "48px",
+          width: "48px",
+          height: "48px",
           borderRadius: "10px",
-          marginBottom: "24px",
           display: "block",
           margin: "0 auto 24px auto",
         }}

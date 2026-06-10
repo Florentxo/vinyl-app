@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import type { VinylRecord } from "../types/record"
 
+
+
 interface Artist {
   id: number
   name: string
@@ -20,12 +22,13 @@ interface Release {
 
 interface VinylSearchProps {
   onAdd: (record: Omit<VinylRecord, "id" | "favorite" | "status">) => void
+  isMobile?: boolean
 }
 
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN
 const releaseCache = new Map<number, Release[]>()
 
-export default function VinylSearch({ onAdd }: VinylSearchProps) {
+export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProps) {
   const [step, setStep] = useState<"artist" | "album">("artist")
   const [artistQuery, setArtistQuery] = useState("")
   const [artists, setArtists] = useState<Artist[]>([])
@@ -34,6 +37,7 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
   const [loadingArtists, setLoadingArtists] = useState(false)
   const [loadingReleases, setLoadingReleases] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  
 
   // =================================================
   // SEARCH ARTISTS
@@ -181,7 +185,14 @@ export default function VinylSearch({ onAdd }: VinylSearchProps) {
           )}
 
           {!loadingArtists && artists.length > 0 && (
-            <div style={dropdownStyle}>
+            <div style={isMobile ? {
+              background: "#2a2a2a",
+              borderRadius: "12px",
+              marginTop: "8px",
+              overflow: "hidden",
+              maxHeight: "200px",
+              overflowY: "auto" as const,
+            } : dropdownStyle}>
               {artists.map((artist) => (
                 <div
                   key={artist.id}

@@ -1,10 +1,10 @@
 import type { ReactNode } from "react"
-import { useEffect, useState } from "react"
 
 import Sidebar from "./Sidebar"
 import DetailsPanel from "./DetailsPanel"
 
 import { useRecordsStore } from "../../features/records/store/recordsStore"
+import { useIsMobile } from "../hooks/useIsMobile"
 
 interface LayoutProps {
   children: ReactNode
@@ -13,16 +13,7 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const selectedRecord = useRecordsStore((state) => state.selectedRecord)
   const setSelectedRecord = useRecordsStore((state) => state.setSelectedRecord)
-
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 900)
-
-  useEffect(() => {
-    function handleResize() {
-      setIsMobile(window.innerWidth < 900)
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+  const isMobile = useIsMobile()
 
   return (
     <div style={{
