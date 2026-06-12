@@ -226,25 +226,20 @@ export default function GenericView({ title, type }: GenericViewProps) {
             <h2 style={{ color: "white", margin: 0, fontSize: "18px" }}>Add a vinyl</h2>
             <button onClick={() => setModalOpen(false)} style={closeButtonStyle}>✕</button>
           </div>
-          <VinylSearch
-            onAdd={(record) => {
-              const existing = records.find(
-                (r) =>
-                  r.artist.toLowerCase().trim() === record.artist.toLowerCase().trim() &&
-                  r.album.toLowerCase().trim() === record.album.toLowerCase().trim()
-              )
-              if (existing && existing.status === "wishlist" && type === "collection") {
-                changeStatus(existing.id, "owned")
-                return
-              }
-              addRecord({
-                ...record,
-                id: Date.now().toString(),
-                favorite: false,
-                status: type === "wishlist" ? "wishlist" : "owned",
-              })
-            }}
-          />
+          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <VinylSearch
+              isMobile={true}
+              onAdd={(record) => {
+                addRecord({
+                  ...record,
+                  id: Date.now().toString(),
+                  favorite: false,
+                  status: type === "wishlist" ? "wishlist" : "owned",
+                })
+                setModalOpen(false)
+              }}
+            />
+          </div>
         </div>
       )}
 
@@ -342,7 +337,8 @@ const addModalStyle = {
   display: "flex",
   flexDirection: "column" as const,
   padding: "20px",
-  paddingBottom: "80px",
+  paddingBottom: "20px",
+  overflow: "hidden",
 }
 
 const spotifyLinkStyle = {

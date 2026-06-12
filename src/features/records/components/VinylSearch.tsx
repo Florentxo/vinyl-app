@@ -165,7 +165,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   // =================================================
 
   return (
-    <div style={{ marginBottom: "24px" }}>
+     <div style={{ marginBottom: "24px", display: "flex", flexDirection: "column", flex: 1, height: "100%" }}>
 
       {/* STEP ARTIST */}
       {step === "artist" && (
@@ -237,7 +237,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
             <div style={{ color: "#666", padding: "10px" }}>Loading albums...</div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "300px", overflowY: "auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: isMobile ? "calc(100vh - 200px)" : "300px", overflowY: "auto" as const }}>
             {releases.map((release) => (
               <div
                 key={release.id}
