@@ -1,6 +1,7 @@
 import { useNavigate, NavLink } from "react-router-dom"
 import { useAuthStore } from "../../features/auth/store/authStore"
 import { useIsMobile } from "../hooks/useIsMobile"
+import { colors } from "../../theme"
 
 const menus = [
   { path: "/collection", label: "Home", icon: "🎵" },
@@ -30,11 +31,11 @@ export default function Sidebar() {
         left: 0,
         right: 0,
         height: "65px",
-        background: "#0D0D0D",
+        background: colors.bgSecondary,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-around",
-        borderTop: "1px solid #222",
+        borderTop: `1px solid ${colors.border}`,
         zIndex: 100,
       }}>
         {menus.map((menu) => (
@@ -46,7 +47,7 @@ export default function Sidebar() {
               flexDirection: "column",
               alignItems: "center",
               gap: "4px",
-              color: isActive ? "#2563EB" : "#666",
+              color: isActive ? colors.accent : colors.textTertiary,
               textDecoration: "none",
               fontSize: "11px",
               flex: 1,
@@ -64,7 +65,7 @@ export default function Sidebar() {
             flexDirection: "column",
             alignItems: "center",
             gap: "4px",
-            color: "#666",
+            color: colors.textTertiary,
             background: "none",
             border: "none",
             fontSize: "11px",
@@ -86,7 +87,7 @@ export default function Sidebar() {
   return (
     <div style={{
       width: "100px",
-      background: "#0D0D0D",
+      background: colors.bgSecondary,
       padding: "20px 12px",
       display: "flex",
       flexDirection: "column",
@@ -113,8 +114,8 @@ export default function Sidebar() {
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            background: isActive ? "#2563EB" : "transparent",
-            color: isActive ? "white" : "#888",
+            background: isActive ? colors.accent : "transparent",
+            color: isActive ? colors.card : colors.textSecondary,
             borderRadius: "10px",
             padding: "10px 12px",
             fontSize: "14px",
@@ -137,7 +138,7 @@ export default function Sidebar() {
           alignItems: "center",
           gap: "10px",
           background: "transparent",
-          color: "#555",
+          color: colors.textTertiary,
           border: "none",
           borderRadius: "10px",
           padding: "10px 12px",

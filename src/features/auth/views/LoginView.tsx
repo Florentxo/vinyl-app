@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuthStore } from "../store/authStore"
 import { APP_NAME } from "../../../config"
+import { colors } from "../../../theme"
 
 export default function LoginView() {
   const [email, setEmail] = useState("")
@@ -65,11 +66,11 @@ const containerStyle = {
   alignItems: "center",
   justifyContent: "center",
   height: "100vh",
-  background: "#111111",
+  background: colors.bg,
 }
 
 const cardStyle = {
-  background: "#1E1E1E",
+  background: colors.bgSecondary,
   borderRadius: "20px",
   padding: "40px",
   width: "100%",
@@ -80,21 +81,21 @@ const cardStyle = {
 }
 
 const titleStyle = {
-  color: "white",
+  color: colors.textPrimary,
   fontSize: "28px",
   margin: 0,
   textAlign: "center" as const,
 }
 
 const subtitleStyle = {
-  color: "#888",
+  color: colors.textSecondary,
   margin: 0,
   textAlign: "center" as const,
 }
 
 const errorStyle = {
-  background: "#991B1B",
-  color: "white",
+  background: colors.danger,
+  color: colors.card,
   padding: "12px",
   borderRadius: "10px",
 }
@@ -102,9 +103,9 @@ const errorStyle = {
 const inputStyle = {
   padding: "14px",
   borderRadius: "12px",
-  border: "none",
-  background: "#111111",
-  color: "white",
+  border: `0.5px solid ${colors.border}`,
+  background: colors.card,
+  color: colors.textPrimary,
   fontSize: "16px",
 }
 
@@ -112,18 +113,18 @@ const buttonStyle = {
   padding: "14px",
   borderRadius: "12px",
   border: "none",
-  background: "#2563EB",
-  color: "white",
+  background: colors.accent,
+  color: colors.card,
   fontSize: "16px",
   cursor: "pointer",
 }
 
 const linkStyle = {
-  color: "#888",
+  color: colors.textSecondary,
   textAlign: "center" as const,
   margin: 0,
 }
 
 const anchorStyle = {
-  color: "#2563EB",
+  color: colors.accent,
 }

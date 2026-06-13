@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { colors } from "../../../theme"
 
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN
 
@@ -97,8 +98,8 @@ export default function TracklistSection({ artist, album, recordId, onGenreStyle
     })
   }, [recordId])
 
-  if (loading) return <p style={{ color: "#555", fontSize: "13px" }}>Loading tracklist...</p>
-  if (sides.length === 0) return <p style={{ color: "#555", fontSize: "13px" }}>No tracklist found</p>
+  if (loading) return <p style={{ color: colors.textTertiary, fontSize: "13px" }}>Loading tracklist...</p>
+  if (sides.length === 0) return <p style={{ color: colors.textTertiary, fontSize: "13px" }}>No tracklist found</p>
 
   return (
     <div>
@@ -106,7 +107,7 @@ export default function TracklistSection({ artist, album, recordId, onGenreStyle
         <div key={i} style={{ marginBottom: "16px" }}>
           {side.name && (
             <p style={{
-              color: "#2563EB",
+              color: colors.accent,
               fontSize: "11px",
               letterSpacing: "1px",
               margin: "0 0 8px 0",
@@ -121,12 +122,12 @@ export default function TracklistSection({ artist, album, recordId, onGenreStyle
               justifyContent: "space-between",
               alignItems: "baseline",
               padding: "5px 0",
-              borderBottom: "1px solid #1a1a1a",
+              borderBottom: `1px solid ${colors.border}`,
               gap: "8px",
             }}>
-              <span style={{ color: "#555", fontSize: "11px", flexShrink: 0 }}>{track.number}</span>
-              <span style={{ color: "#ccc", fontSize: "13px", flex: 1 }}>{track.title}</span>
-              <span style={{ color: "#555", fontSize: "11px", flexShrink: 0 }}>{track.duration}</span>
+              <span style={{ color: colors.textTertiary, fontSize: "11px", flexShrink: 0 }}>{track.number}</span>
+              <span style={{ color: colors.textMuted, fontSize: "13px", flex: 1 }}>{track.title}</span>
+              <span style={{ color: colors.textTertiary, fontSize: "11px", flexShrink: 0 }}>{track.duration}</span>
             </div>
           ))}
         </div>

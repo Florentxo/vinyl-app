@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import type { VinylRecord } from "../types/record"
-
-
+import { colors } from "../../../theme"
 
 interface Artist {
   id: number
@@ -37,7 +36,6 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   const [loadingArtists, setLoadingArtists] = useState(false)
   const [loadingReleases, setLoadingReleases] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  
 
   // =================================================
   // SEARCH ARTISTS
@@ -165,7 +163,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   // =================================================
 
   return (
-     <div style={{ marginBottom: "24px", display: "flex", flexDirection: "column", flex: 1, height: "100%" }}>
+    <div style={{ marginBottom: "24px", display: "flex", flexDirection: "column", flex: 1, height: "100%" }}>
 
       {/* STEP ARTIST */}
       {step === "artist" && (
@@ -186,7 +184,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
 
           {!loadingArtists && artists.length > 0 && (
             <div style={isMobile ? {
-              background: "#2a2a2a",
+              background: colors.card,
               borderRadius: "12px",
               marginTop: "8px",
               overflow: "hidden",
@@ -198,7 +196,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
                   key={artist.id}
                   style={dropdownItemStyle}
                   onClick={() => fetchReleases(artist)}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#2a2a2a")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = colors.cardHover)}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -209,7 +207,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
                         style={{ width: "32px", height: "32px", borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
                       />
                     ) : (
-                      <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#333", flexShrink: 0 }} />
+                      <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: colors.cover, flexShrink: 0 }} />
                     )}
                     <span>{artist.name}</span>
                   </div>
@@ -225,16 +223,16 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
             <button onClick={reset} style={backButtonStyle}>←</button>
-            <span style={{ color: "white", fontWeight: "bold" }}>{selectedArtist?.name}</span>
+            <span style={{ color: colors.textPrimary, fontWeight: "bold" }}>{selectedArtist?.name}</span>
             {!loadingReleases && (
-              <span style={{ color: "#555", fontSize: "13px" }}>
+              <span style={{ color: colors.textTertiary, fontSize: "13px" }}>
                 {releases.length} release{releases.length !== 1 ? "s" : ""}
               </span>
             )}
           </div>
 
           {loadingReleases && (
-            <div style={{ color: "#666", padding: "10px" }}>Loading albums...</div>
+            <div style={{ color: colors.textTertiary, padding: "10px" }}>Loading albums...</div>
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: isMobile ? "calc(100vh - 200px)" : "300px", overflowY: "auto" as const }}>
@@ -243,8 +241,8 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
                 key={release.id}
                 style={releaseItemStyle}
                 onClick={() => selectAlbum(release)}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#2a2a2a")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "#1E1E1E")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = colors.cardHover)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = colors.card)}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   {release.cover_url && (
@@ -255,14 +253,14 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
                     />
                   )}
                   <div>
-                    <span style={{ color: "white", fontSize: "15px", display: "block" }}>{release.title}</span>
+                    <span style={{ color: colors.textPrimary, fontSize: "15px", display: "block" }}>{release.title}</span>
                     {release.format && (
-                      <span style={{ color: "#555", fontSize: "11px" }}>{release.format}</span>
+                      <span style={{ color: colors.textTertiary, fontSize: "11px" }}>{release.format}</span>
                     )}
                   </div>
                 </div>
                 {release.year && (
-                  <span style={{ color: "#666", fontSize: "13px", flexShrink: 0 }}>{release.year}</span>
+                  <span style={{ color: colors.textTertiary, fontSize: "13px", flexShrink: 0 }}>{release.year}</span>
                 )}
               </div>
             ))}
@@ -282,9 +280,9 @@ const inputStyle = {
   width: "100%",
   padding: "14px",
   borderRadius: "12px",
-  border: "none",
-  background: "#1E1E1E",
-  color: "white",
+  border: `0.5px solid ${colors.border}`,
+  background: colors.card,
+  color: colors.textPrimary,
   fontSize: "16px",
   boxSizing: "border-box" as const,
 }
@@ -294,17 +292,18 @@ const dropdownStyle = {
   top: "calc(100% + 4px)",
   left: 0,
   right: 0,
-  background: "#1E1E1E",
+  background: colors.card,
   borderRadius: "12px",
   zIndex: 50,
-  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+  boxShadow: "0 8px 24px rgba(58,46,34,0.15)",
   maxHeight: "300px",
   overflowY: "auto" as const,
+  border: `0.5px solid ${colors.border}`,
 }
 
 const dropdownItemStyle = {
   padding: "10px 16px",
-  color: "white",
+  color: colors.textPrimary,
   cursor: "pointer",
   fontSize: "15px",
   background: "transparent",
@@ -312,9 +311,9 @@ const dropdownItemStyle = {
 }
 
 const backButtonStyle = {
-  background: "#1E1E1E",
+  background: colors.card,
   border: "none",
-  color: "white",
+  color: colors.textPrimary,
   borderRadius: "8px",
   padding: "8px 12px",
   cursor: "pointer",
@@ -322,7 +321,7 @@ const backButtonStyle = {
 }
 
 const releaseItemStyle = {
-  background: "#1E1E1E",
+  background: colors.card,
   borderRadius: "10px",
   padding: "10px 14px",
   cursor: "pointer",
@@ -330,4 +329,5 @@ const releaseItemStyle = {
   justifyContent: "space-between",
   alignItems: "center",
   transition: "0.15s",
+  border: `0.5px solid ${colors.border}`,
 }

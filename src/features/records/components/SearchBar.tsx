@@ -1,4 +1,5 @@
 import { ChangeEvent } from "react"
+import { colors } from "../../../theme"
 
 interface SearchBarProps {
   value: string
@@ -36,9 +37,9 @@ const searchStyle = {
   width: "100%",
   padding: "16px",
   borderRadius: "14px",
-  border: "none",
-  background: "#1E1E1E",
-  color: "white",
+  border: `0.5px solid ${colors.border}`,
+  background: colors.card,
+  color: colors.textPrimary,
   fontSize: "16px",
   marginBottom: "25px",
   boxSizing: "border-box" as const,

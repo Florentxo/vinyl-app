@@ -1,4 +1,5 @@
 import type { VinylRecord } from "../types/record"
+import { colors } from "../../../theme"
 
 interface RecordCardProps {
   item: VinylRecord
@@ -31,12 +32,15 @@ export default function RecordCard({
 }: RecordCardProps) {
   return (
     <div
-      onClick={() => onSelect(item)}
+      onClick={(e) => {
+        e.stopPropagation()
+        onSelect(item)
+      }}
       style={{
         ...cardStyle,
 
         border: isSelected
-          ? "2px solid #2563EB"
+          ? `2px solid ${colors.accent}`
           : "2px solid transparent",
       }}
     >
@@ -48,7 +52,7 @@ export default function RecordCard({
           width: "48px",
           height: "48px",
           borderRadius: "8px",
-          background: "#111",
+          background: colors.cover,
           flexShrink: 0,
           overflow: "hidden",
           display: "flex",
@@ -98,7 +102,7 @@ export default function RecordCard({
           }}
           style={{
             ...favoriteButtonStyle,
-            color: item.favorite ? "#FACC15" : "#666",
+            color: item.favorite ? colors.favorite : colors.textTertiary,
           }}
         >
           {item.favorite ? "★" : "☆"}
@@ -113,7 +117,7 @@ export default function RecordCard({
 // =================================================
 
 const cardStyle = {
-  background: "#1E1E1E",
+  background: colors.card,
   borderRadius: "16px",
   width: "100%",
   boxSizing: "border-box" as const,
@@ -125,13 +129,13 @@ const cardStyle = {
 }
 
 const artistStyle = {
-  color: "white",
+  color: colors.textPrimary,
   fontSize: "22px",
   margin: 0,
 }
 
 const albumStyle = {
-  color: "#888",
+  color: colors.textSecondary,
   marginTop: "8px",
   marginBottom: 0,
 }
@@ -141,8 +145,8 @@ const actionButtonStyle = {
   height: "50px",
   border: "none",
   borderRadius: "12px",
-  background: "#2563EB",
-  color: "white",
+  background: colors.accent,
+  color: colors.card,
   fontSize: "24px",
   cursor: "pointer",
 }

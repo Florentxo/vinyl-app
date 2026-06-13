@@ -5,6 +5,7 @@ import DetailsPanel from "./DetailsPanel"
 
 import { useRecordsStore } from "../../features/records/store/recordsStore"
 import { useIsMobile } from "../hooks/useIsMobile"
+import { colors } from "../../theme"
 
 interface LayoutProps {
   children: ReactNode
@@ -19,7 +20,7 @@ export default function Layout({ children }: LayoutProps) {
     <div style={{
       display: "flex",
       height: "100vh",
-      background: "#151515",
+      background: colors.bg,
       overflow: "hidden",
       position: "relative",
     }}>

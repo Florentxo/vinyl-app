@@ -7,6 +7,7 @@ import TracklistSection from "../components/TracklistSection"
 
 import { useRecordsStore } from "../store/recordsStore"
 import { useIsMobile } from "../../../shared/hooks/useIsMobile"
+import { colors } from "../../../theme"
 import type { VinylRecord } from "../types/record"
 
 interface GenericViewProps {
@@ -49,6 +50,24 @@ export default function GenericView({ title, type }: GenericViewProps) {
     }
   }
 
+  function addOrMove(record: Omit<VinylRecord, "id" | "favorite" | "status">) {
+    const existing = records.find(
+      (r) =>
+        r.artist.toLowerCase().trim() === record.artist.toLowerCase().trim() &&
+        r.album.toLowerCase().trim() === record.album.toLowerCase().trim()
+    )
+    if (existing && existing.status === "wishlist" && type === "collection") {
+      changeStatus(existing.id, "owned")
+      return
+    }
+    addRecord({
+      ...record,
+      id: Date.now().toString(),
+      favorite: false,
+      status: type === "wishlist" ? "wishlist" : "owned",
+    })
+  }
+
   const filteredItems = records
     .filter((item) => {
       const matchesSearch =
@@ -62,13 +81,16 @@ export default function GenericView({ title, type }: GenericViewProps) {
     .sort((a, b) => a.artist.localeCompare(b.artist))
 
   return (
-    <div style={{ ...mainStyle, display: "flex", flexDirection: "column" }}>
+      <div
+        style={{ ...mainStyle, display: "flex", flexDirection: "column" }}
+        onClick={() => setSelectedRecord(null)}
+      >
 
       {/* STICKY HEADER */}
       <div style={{
         position: "sticky",
         top: 0,
-        background: "#111111",
+        background: colors.bg,
         zIndex: 10,
         paddingBottom: "16px",
       }}>
@@ -76,7 +98,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
         {/* TITLE */}
         <div style={{ display: "flex", alignItems: "baseline", gap: "12px", marginBottom: "16px" }}>
           <h1 style={titleStyle}>{title}</h1>
-          <span style={{ color: "#555", fontSize: "16px" }}>
+          <span style={{ color: colors.textSecondary, fontSize: "16px" }}>
             {filteredItems.length} vinyl{filteredItems.length !== 1 ? "s" : ""}
           </span>
         </div>
@@ -84,39 +106,19 @@ export default function GenericView({ title, type }: GenericViewProps) {
         {/* DESKTOP — two bars side by side */}
         {!isMobile && (
           <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+
             <div style={{ flex: 1 }}>
-              <p style={{ color: "#555", fontSize: "12px", margin: "0 0 6px 0", letterSpacing: "0.5px" }}>
-                SEARCH
-              </p>
+              <p style={labelStyle}>SEARCH</p>
               <SearchBar value={search} onChange={setSearch} />
             </div>
 
             {type !== "favorites" && (
               <div style={{ flex: 1 }}>
-                <p style={{ color: "#555", fontSize: "12px", margin: "0 0 6px 0", letterSpacing: "0.5px" }}>
-                  ADD A VINYL
-                </p>
-                <VinylSearch
-                  onAdd={(record) => {
-                    const existing = records.find(
-                      (r) =>
-                        r.artist.toLowerCase().trim() === record.artist.toLowerCase().trim() &&
-                        r.album.toLowerCase().trim() === record.album.toLowerCase().trim()
-                    )
-                    if (existing && existing.status === "wishlist" && type === "collection") {
-                      changeStatus(existing.id, "owned")
-                      return
-                    }
-                    addRecord({
-                      ...record,
-                      id: Date.now().toString(),
-                      favorite: false,
-                      status: type === "wishlist" ? "wishlist" : "owned",
-                    })
-                  }}
-                />
+                <p style={labelStyle}>ADD A VINYL</p>
+                <VinylSearch onAdd={addOrMove} />
               </div>
             )}
+
           </div>
         )}
 
@@ -167,12 +169,12 @@ export default function GenericView({ title, type }: GenericViewProps) {
                     )}
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <h2 style={{ color: "white", margin: 0, fontSize: "18px" }}>{selectedRecord.artist}</h2>
+                        <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>{selectedRecord.artist}</h2>
                         <button onClick={() => setSelectedRecord(null)} style={closeButtonStyle}>✕</button>
                       </div>
-                      <p style={{ color: "#888", margin: "4px 0 0 0", fontSize: "15px" }}>{selectedRecord.album}</p>
+                      <p style={{ color: colors.textSecondary, margin: "4px 0 0 0", fontSize: "15px" }}>{selectedRecord.album}</p>
                       {selectedRecord.year && (
-                        <p style={{ color: "#555", margin: "2px 0 0 0", fontSize: "13px" }}>{selectedRecord.year}</p>
+                        <p style={{ color: colors.textTertiary, margin: "2px 0 0 0", fontSize: "13px" }}>{selectedRecord.year}</p>
                       )}
                     </div>
                   </div>
@@ -181,14 +183,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
                   {(mobileGenre || mobileStyle) && (
                     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                       {mobileGenre && (
-                        <span style={{ background: "#0D0D0D", color: "#888", borderRadius: "20px", padding: "4px 12px", fontSize: "12px" }}>
-                          {mobileGenre}
-                        </span>
+                        <span style={genreTagStyle}>{mobileGenre}</span>
                       )}
                       {mobileStyle && (
-                        <span style={{ background: "#0D0D0D", color: "#2563EB", borderRadius: "20px", padding: "4px 12px", fontSize: "12px" }}>
-                          {mobileStyle}
-                        </span>
+                        <span style={styleTagStyle}>{mobileStyle}</span>
                       )}
                     </div>
                   )}
@@ -223,19 +221,14 @@ export default function GenericView({ title, type }: GenericViewProps) {
       {modalOpen && (
         <div style={addModalStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h2 style={{ color: "white", margin: 0, fontSize: "18px" }}>Add a vinyl</h2>
+            <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>Add a vinyl</h2>
             <button onClick={() => setModalOpen(false)} style={closeButtonStyle}>✕</button>
           </div>
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <VinylSearch
               isMobile={true}
               onAdd={(record) => {
-                addRecord({
-                  ...record,
-                  id: Date.now().toString(),
-                  favorite: false,
-                  status: type === "wishlist" ? "wishlist" : "owned",
-                })
+                addOrMove(record)
                 setModalOpen(false)
               }}
             />
@@ -255,7 +248,7 @@ const mainStyle = {
   flex: 1,
   width: "100%",
   minWidth: 0,
-  background: "#111111",
+  background: colors.bg,
   padding: "30px",
   overflowX: "hidden" as const,
   boxSizing: "border-box" as const,
@@ -263,9 +256,16 @@ const mainStyle = {
 }
 
 const titleStyle = {
-  color: "white",
+  color: colors.textPrimary,
   fontSize: "30px",
   margin: 0,
+}
+
+const labelStyle = {
+  color: colors.textSecondary,
+  fontSize: "12px",
+  margin: "0 0 6px 0",
+  letterSpacing: "0.5px",
 }
 
 const cardsContainerStyle = {
@@ -281,26 +281,26 @@ const fabStyle = {
   width: "56px",
   height: "56px",
   borderRadius: "50%",
-  background: "#2563EB",
-  color: "white",
+  background: colors.accent,
+  color: colors.card,
   fontSize: "28px",
   border: "none",
   cursor: "pointer",
   zIndex: 99,
-  boxShadow: "0 4px 12px rgba(37,99,235,0.4)",
+  boxShadow: `0 4px 12px ${colors.accent}66`,
 }
 
 const detailsOverlayStyle = {
   position: "fixed" as const,
   inset: 0,
-  background: "rgba(0,0,0,0.5)",
+  background: "rgba(58,46,34,0.4)",
   zIndex: 150,
   display: "flex",
   alignItems: "flex-end" as const,
 }
 
 const modalStyle = {
-  background: "#1E1E1E",
+  background: colors.bgSecondary,
   borderRadius: "20px 20px 0 0",
   padding: "24px",
   width: "100%",
@@ -312,7 +312,7 @@ const modalStyle = {
 const closeButtonStyle = {
   background: "none",
   border: "none",
-  color: "#666",
+  color: colors.textTertiary,
   fontSize: "20px",
   cursor: "pointer",
 }
@@ -322,8 +322,8 @@ const deleteButtonStyle = {
   padding: "12px",
   borderRadius: "10px",
   border: "none",
-  background: "#111",
-  color: "#991B1B",
+  background: colors.card,
+  color: colors.danger,
   fontSize: "14px",
   cursor: "pointer",
   marginTop: "4px",
@@ -332,7 +332,7 @@ const deleteButtonStyle = {
 const addModalStyle = {
   position: "fixed" as const,
   inset: 0,
-  background: "#111111",
+  background: colors.bg,
   zIndex: 200,
   display: "flex",
   flexDirection: "column" as const,
@@ -341,32 +341,48 @@ const addModalStyle = {
   overflow: "hidden",
 }
 
+const genreTagStyle = {
+  background: colors.card,
+  color: colors.textMuted,
+  borderRadius: "20px",
+  padding: "4px 12px",
+  fontSize: "12px",
+}
+
+const styleTagStyle = {
+  background: colors.card,
+  color: colors.accent,
+  borderRadius: "20px",
+  padding: "4px 12px",
+  fontSize: "12px",
+}
+
 const spotifyLinkStyle = {
-  background: "#111",
-  color: "#1DB954",
+  background: colors.card,
+  color: colors.spotify,
   borderRadius: "20px",
   padding: "5px 12px",
   fontSize: "12px",
   textDecoration: "none" as const,
-  border: "1px solid #1DB95433",
+  border: `1px solid ${colors.spotify}33`,
 }
 
 const youtubeLinkStyle = {
-  background: "#111",
-  color: "#FF0000",
+  background: colors.card,
+  color: colors.youtube,
   borderRadius: "20px",
   padding: "5px 12px",
   fontSize: "12px",
   textDecoration: "none" as const,
-  border: "1px solid #FF000033",
+  border: `1px solid ${colors.youtube}33`,
 }
 
 const deezerLinkStyle = {
-  background: "#111",
-  color: "#A238FF",
+  background: colors.card,
+  color: colors.deezer,
   borderRadius: "20px",
   padding: "5px 12px",
   fontSize: "12px",
   textDecoration: "none" as const,
-  border: "1px solid #A238FF33",
+  border: `1px solid ${colors.deezer}33`,
 }
