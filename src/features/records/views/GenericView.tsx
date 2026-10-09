@@ -24,8 +24,11 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const isMobile = useIsMobile()
 
   const records = useRecordsStore((state) => state.records)
+  const recordsLoading = useRecordsStore((state) => state.loading)
+  const recordsError = useRecordsStore((state) => state.error)
   const selectedRecord = useRecordsStore((state) => state.selectedRecord)
   const setSelectedRecord = useRecordsStore((state) => state.setSelectedRecord)
+  const clearError = useRecordsStore((state) => state.clearError)
   const addRecord = useRecordsStore((state) => state.addRecord)
   const deleteRecord = useRecordsStore((state) => state.deleteRecord)
   const toggleFavorite = useRecordsStore((state) => state.toggleFavorite)
@@ -35,10 +38,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
     setSelectedRecord(item)
   }
 
-  function deleteItem() {
+  async function deleteItem() {
     if (!selectedRecord) return
-    deleteRecord(selectedRecord.id)
-    setSelectedRecord(null)
+    if (!window.confirm(`Delete "${selectedRecord.album}" from your records?`)) return
+    await deleteRecord(selectedRecord.id)
   }
 
   function getListenUrls(artist: string, album: string) {
@@ -50,19 +53,17 @@ export default function GenericView({ title, type }: GenericViewProps) {
     }
   }
 
-  function addOrMove(record: Omit<VinylRecord, "id" | "favorite" | "status">) {
+  async function addOrMove(record: Omit<VinylRecord, "id" | "favorite" | "status">) {
     const existing = records.find(
       (r) =>
         r.artist.toLowerCase().trim() === record.artist.toLowerCase().trim() &&
         r.album.toLowerCase().trim() === record.album.toLowerCase().trim()
     )
     if (existing && existing.status === "wishlist" && type === "collection") {
-      changeStatus(existing.id, "owned")
-      return
+      return changeStatus(existing.id, "owned")
     }
-    addRecord({
+    return addRecord({
       ...record,
-      id: Date.now().toString(),
       favorite: false,
       status: type === "wishlist" ? "wishlist" : "owned",
     })
@@ -127,8 +128,19 @@ export default function GenericView({ title, type }: GenericViewProps) {
 
       </div>
 
+      {recordsError && (
+        <div role="alert" style={errorBannerStyle}>
+          <span>{recordsError}</span>
+          <button type="button" onClick={clearError} style={dismissButtonStyle}>Dismiss</button>
+        </div>
+      )}
+
       {/* SCROLLABLE RECORDS LIST */}
       <div style={{ ...cardsContainerStyle, paddingBottom: isMobile ? "80px" : "0", overflowY: "auto", flex: 1 }}>
+        {recordsLoading && <p style={emptyStateStyle}>Loading your records...</p>}
+        {!recordsLoading && filteredItems.length === 0 && !recordsError && (
+          <p style={emptyStateStyle}>No records found.</p>
+        )}
         {filteredItems.map((item) => (
           <RecordCard
             key={item.id}
@@ -227,9 +239,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <VinylSearch
               isMobile={true}
-              onAdd={(record) => {
-                addOrMove(record)
-                setModalOpen(false)
+              onAdd={async (record) => {
+                const added = await addOrMove(record)
+                if (added) setModalOpen(false)
+                return added
               }}
             />
           </div>
@@ -385,4 +398,32 @@ const deezerLinkStyle = {
   fontSize: "12px",
   textDecoration: "none" as const,
   border: `1px solid ${colors.deezer}33`,
+}
+
+const emptyStateStyle = {
+  color: colors.textTertiary,
+  fontSize: "14px",
+  textAlign: "center" as const,
+  padding: "24px 12px",
+}
+
+const errorBannerStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "12px",
+  padding: "10px 12px",
+  marginBottom: "12px",
+  borderRadius: "8px",
+  background: colors.card,
+  color: colors.danger,
+  fontSize: "13px",
+}
+
+const dismissButtonStyle = {
+  border: "none",
+  background: "transparent",
+  color: colors.textMuted,
+  cursor: "pointer",
+  flexShrink: 0,
 }

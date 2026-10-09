@@ -28,6 +28,11 @@ function PersistentViews() {
     setSelectedRecord(null)
   }, [location.pathname])
 
+  if (location.pathname === "/") return <Navigate to="/collection" replace />
+  if (!["/collection", "/favorites", "/wishlist"].includes(location.pathname)) {
+    return <Navigate to="/collection" replace />
+  }
+
   return (
     <>
       <div style={{ display: location.pathname === "/collection" ? "flex" : "none", flex: 1, minHeight: 0 }}>

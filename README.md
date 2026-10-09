@@ -1,16 +1,41 @@
-# React + Vite
+# Vinyl Collec'
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Application React pour gérer une collection de vinyles, une wishlist et des favoris. Les sorties sont recherchées dans Discogs et les collections sont stockées dans Supabase.
 
-Currently, two official plugins are available:
+## Démarrage
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Installer les dépendances avec `npm install`.
+2. Créer un fichier `.env.local` à la racine :
 
-## React Compiler
+```dotenv
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+VITE_DISCOGS_TOKEN=your-discogs-token
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+3. Lancer `npm run dev`.
 
-## Expanding the ESLint configuration
+`VITE_DISCOGS_TOKEN` est facultatif, mais les requêtes Discogs sans jeton sont soumises aux limites publiques de l'API. Les variables préfixées par `VITE_` sont intégrées au code envoyé au navigateur : ne jamais y placer une clé Supabase `service_role` ni un secret serveur. Pour un déploiement public, servir les requêtes Discogs depuis un proxy ou une Supabase Edge Function.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Supabase
+
+Créer une table `public.records` avec les colonnes attendues par l'application :
+
+| Colonne | Type suggéré | Contraintes |
+| --- | --- | --- |
+| `id` | `uuid` | clé primaire, défaut `gen_random_uuid()` |
+| `user_id` | `uuid` | référence à `auth.users.id`, non nul |
+| `artist` | `text` | non nul |
+| `album` | `text` | non nul |
+| `year` | `text` | nullable |
+| `genre` | `text` | nullable |
+| `cover_url` | `text` | nullable |
+| `favorite` | `boolean` | non nul, défaut `false` |
+| `status` | `text` | `owned` ou `wishlist` |
+
+Activer la Row Level Security (RLS) sur cette table et créer des politiques `select`, `insert`, `update` et `delete` qui autorisent chaque utilisateur authentifié à accéder uniquement aux lignes dont `user_id = auth.uid()`. Les filtres côté client ne remplacent pas ces politiques. Vérifier les règles existantes dans le tableau de bord Supabase avant de les modifier.
+
+## Vérifications
+
+- `npm run build` : build de production.
+- `npm run lint` : vérification ESLint.

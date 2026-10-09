@@ -17,10 +17,11 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
 
   if (!selectedRecord) return null
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!selectedRecord) return
-    deleteRecord(selectedRecord.id)
-    setSelectedRecord(null)
+    if (!window.confirm(`Delete "${selectedRecord.album}" from your records?`)) return
+    const deleted = await deleteRecord(selectedRecord.id)
+    if (deleted) setSelectedRecord(null)
   }
 
   const spotifyUrl = `spotify:search:${encodeURIComponent(`${selectedRecord.artist} ${selectedRecord.album}`)}`
