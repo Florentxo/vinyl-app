@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import VinylSearch from "../components/VinylSearch"
 import RecordCard from "../components/RecordCard"
@@ -15,11 +15,26 @@ interface GenericViewProps {
   type: "collection" | "favorites" | "wishlist"
 }
 
+type SortOrder = "artist" | "album" | "genre" | "year-newest" | "year-oldest"
+
+const sortOptions: { value: SortOrder; label: string }[] = [
+  { value: "artist", label: "Artist A-Z" },
+  { value: "album", label: "Album A-Z" },
+  { value: "genre", label: "Genre A-Z" },
+  { value: "year-newest", label: "Year : Newest" },
+  { value: "year-oldest", label: "Year : Oldest" },
+]
+
 export default function GenericView({ title, type }: GenericViewProps) {
   const [search, setSearch] = useState("")
+  const [sortOrder, setSortOrder] = useState<SortOrder>("artist")
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [mobileGenre, setMobileGenre] = useState("")
   const [mobileStyle, setMobileStyle] = useState("")
+  const sortControlRef = useRef<HTMLDivElement>(null)
+  const sortTriggerRef = useRef<HTMLButtonElement>(null)
+  const sortOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const isMobile = useIsMobile()
 
@@ -33,6 +48,30 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const deleteRecord = useRecordsStore((state) => state.deleteRecord)
   const toggleFavorite = useRecordsStore((state) => state.toggleFavorite)
   const changeStatus = useRecordsStore((state) => state.changeStatus)
+
+  useEffect(() => {
+    if (!sortMenuOpen) return
+
+    const selectedIndex = sortOptions.findIndex((option) => option.value === sortOrder)
+    sortOptionRefs.current[selectedIndex]?.focus()
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!sortControlRef.current?.contains(event.target as Node)) setSortMenuOpen(false)
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return
+      setSortMenuOpen(false)
+      sortTriggerRef.current?.focus()
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer)
+    document.addEventListener("keydown", closeOnEscape)
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer)
+      document.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [sortMenuOpen, sortOrder])
 
   function selectItem(item: VinylRecord) {
     setSelectedRecord(item)
@@ -79,7 +118,97 @@ export default function GenericView({ title, type }: GenericViewProps) {
       if (type === "wishlist") return item.status === "wishlist" && matchesSearch
       return item.status === "owned" && matchesSearch
     })
-    .sort((a, b) => a.artist.localeCompare(b.artist))
+    .sort((a, b) => {
+      const artistOrder = a.artist.localeCompare(b.artist, undefined, { sensitivity: "base" })
+      if (sortOrder === "album") {
+        return a.album.localeCompare(b.album, undefined, { sensitivity: "base" }) || artistOrder
+      }
+      if (sortOrder === "genre") {
+        const genreA = a.genre.trim()
+        const genreB = b.genre.trim()
+        if (Boolean(genreA) !== Boolean(genreB)) return genreA ? -1 : 1
+        return genreA.localeCompare(genreB, undefined, { sensitivity: "base" }) || artistOrder
+      }
+      if (sortOrder === "year-newest" || sortOrder === "year-oldest") {
+        const yearA = Number.parseInt(a.year, 10)
+        const yearB = Number.parseInt(b.year, 10)
+        const hasYearA = Number.isFinite(yearA)
+        const hasYearB = Number.isFinite(yearB)
+
+        if (hasYearA !== hasYearB) return hasYearA ? -1 : 1
+        if (hasYearA && hasYearB && yearA !== yearB) {
+          return sortOrder === "year-newest" ? yearB - yearA : yearA - yearB
+        }
+      }
+      return artistOrder
+    })
+
+  const sortControl = (
+    <div ref={sortControlRef} style={sortControlStyle}>
+      <span>Sort by</span>
+      <div style={sortMenuContainerStyle}>
+        <button
+          ref={sortTriggerRef}
+          type="button"
+          aria-label="Sort records"
+          aria-haspopup="menu"
+          aria-expanded={sortMenuOpen}
+          aria-controls="record-sort-menu"
+          onClick={() => setSortMenuOpen((open) => !open)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") setSortMenuOpen(true)
+          }}
+          style={{ ...sortTriggerStyle, fontSize: isMobile ? "16px" : "14px" }}
+        >
+          <span>{sortOptions.find((option) => option.value === sortOrder)?.label}</span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+        {sortMenuOpen && (
+          <div
+            id="record-sort-menu"
+            role="menu"
+            aria-label="Sort records"
+            style={sortOptionsMenuStyle}
+            onKeyDown={(event) => {
+              const currentIndex = sortOptions.findIndex((option) => option.value === sortOrder)
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault()
+                const direction = event.key === "ArrowDown" ? 1 : -1
+                const nextIndex = (currentIndex + direction + sortOptions.length) % sortOptions.length
+                sortOptionRefs.current[nextIndex]?.focus()
+              } else if (event.key === "Home" || event.key === "End") {
+                event.preventDefault()
+                const nextIndex = event.key === "Home" ? 0 : sortOptions.length - 1
+                sortOptionRefs.current[nextIndex]?.focus()
+              }
+            }}
+          >
+            {sortOptions.map((option, index) => (
+              <button
+                key={option.value}
+                ref={(element) => { sortOptionRefs.current[index] = element }}
+                type="button"
+                role="menuitemradio"
+                aria-checked={sortOrder === option.value}
+                tabIndex={sortOrder === option.value ? 0 : -1}
+                onClick={() => {
+                  setSortOrder(option.value)
+                  setSortMenuOpen(false)
+                  sortTriggerRef.current?.focus()
+                }}
+                style={{
+                  ...sortOptionStyle,
+                  background: sortOrder === option.value ? colors.accentBg : "transparent",
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   return (
       <div
@@ -111,6 +240,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
             <div style={{ flex: 1 }}>
               <p style={labelStyle}>SEARCH</p>
               <SearchBar value={search} onChange={setSearch} />
+              {sortControl}
             </div>
 
             {type !== "favorites" && (
@@ -124,7 +254,12 @@ export default function GenericView({ title, type }: GenericViewProps) {
         )}
 
         {/* MOBILE — search bar only */}
-        {isMobile && <SearchBar value={search} onChange={setSearch} />}
+        {isMobile && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <SearchBar value={search} onChange={setSearch} />
+            {sortControl}
+          </div>
+        )}
 
       </div>
 
@@ -156,7 +291,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
 
       {/* FLOATING BUTTON — mobile only */}
       {type !== "favorites" && isMobile && (
-        <button onClick={() => setModalOpen(true)} style={fabStyle}>+</button>
+        <button onClick={() => setModalOpen(true)} style={fabStyle} aria-label="Add a vinyl">+</button>
       )}
 
       {/* DETAILS MODAL — mobile only */}
@@ -236,7 +371,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
             <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>Add a vinyl</h2>
             <button onClick={() => setModalOpen(false)} style={closeButtonStyle}>✕</button>
           </div>
-          <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
             <VinylSearch
               isMobile={true}
               onAdd={async (record) => {
@@ -281,6 +416,71 @@ const labelStyle = {
   letterSpacing: "0.5px",
 }
 
+const sortControlStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  marginTop: "10px",
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box" as const,
+  color: colors.textSecondary,
+  fontSize: "12px",
+}
+
+const sortMenuContainerStyle = {
+  position: "relative" as const,
+  flex: 1,
+  minWidth: 0,
+}
+
+const sortTriggerStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "8px",
+  width: "100%",
+  maxWidth: "100%",
+  boxSizing: "border-box" as const,
+  padding: "10px 12px",
+  borderRadius: "8px",
+  border: `1px solid ${colors.border}`,
+  background: colors.card,
+  color: colors.textPrimary,
+  textAlign: "left" as const,
+  whiteSpace: "nowrap" as const,
+  cursor: "pointer",
+}
+
+const sortOptionsMenuStyle = {
+  position: "absolute" as const,
+  top: "calc(100% + 4px)",
+  left: 0,
+  right: 0,
+  zIndex: 40,
+  maxHeight: "min(220px, 45vh)",
+  overflowY: "auto" as const,
+  border: `1px solid ${colors.border}`,
+  borderRadius: "8px",
+  background: colors.card,
+  boxShadow: "0 8px 20px rgba(58,46,34,0.16)",
+}
+
+const sortOptionStyle = {
+  display: "flex",
+  alignItems: "center",
+  width: "100%",
+  minHeight: "40px",
+  boxSizing: "border-box" as const,
+  padding: "8px 12px",
+  border: "none",
+  color: colors.textPrimary,
+  fontSize: "14px",
+  textAlign: "left" as const,
+  whiteSpace: "nowrap" as const,
+  cursor: "pointer",
+}
+
 const cardsContainerStyle = {
   display: "flex",
   flexDirection: "column" as const,
@@ -290,17 +490,17 @@ const cardsContainerStyle = {
 const fabStyle = {
   position: "fixed" as const,
   bottom: "80px",
-  right: "20px",
+  right: "12px",
   width: "56px",
   height: "56px",
   borderRadius: "50%",
-  background: colors.accent,
+  background: colors.textPrimary,
   color: colors.card,
   fontSize: "28px",
   border: "none",
   cursor: "pointer",
   zIndex: 99,
-  boxShadow: `0 4px 12px ${colors.accent}66`,
+  boxShadow: `0 4px 12px ${colors.textPrimary}66`,
 }
 
 const detailsOverlayStyle = {

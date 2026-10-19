@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import type { IScannerControls } from "@zxing/browser"
 import type { VinylRecord } from "../types/record"
 import { colors } from "../../../theme"
 import {
@@ -17,14 +18,45 @@ interface VinylSearchProps {
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN
 const releaseCache = new Map<string, { releases: Release[]; nextPage: number | null }>()
 const formatOptions = ["Vinyl", "LP", '12"', '7"', "CD", "Cassette"]
+const photoAngles = [
+  { key: "front", label: "Front cover" },
+  { key: "back", label: "Back cover" },
+  { key: "label", label: "Center label on the record" },
+] as const
+type PhotoAngle = (typeof photoAngles)[number]["key"]
+
+function normalizeBarcode(value: string) {
+  return value.replace(/[\s-]/g, "")
+}
+
+function isValidBarcode(value: string) {
+  return /^\d{8,14}$/.test(value)
+}
 
 export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProps) {
+  const artistFieldRef = useRef<HTMLDivElement>(null)
+  const barcodeVideoRef = useRef<HTMLVideoElement>(null)
+  const scannerControlsRef = useRef<IScannerControls | null>(null)
   const [artistQuery, setArtistQuery] = useState("")
   const [selectedArtist, setSelectedArtist] = useState<DiscogsArtistSuggestion | null>(null)
   const [artistSuggestions, setArtistSuggestions] = useState<DiscogsArtistSuggestion[]>([])
+  const [artistSuggestionsMaxHeight, setArtistSuggestionsMaxHeight] = useState(220)
   const [loadingArtists, setLoadingArtists] = useState(false)
+  const [artistSearchError, setArtistSearchError] = useState("")
   const [albumQuery, setAlbumQuery] = useState("")
   const [format, setFormat] = useState("")
+  const [barcodeQuery, setBarcodeQuery] = useState("")
+  const [barcodeScannerOpen, setBarcodeScannerOpen] = useState(false)
+  const [barcodeScannerError, setBarcodeScannerError] = useState("")
+  const [photoFiles, setPhotoFiles] = useState<Record<PhotoAngle, File | null>>({
+    front: null,
+    back: null,
+    label: null,
+  })
+  const [photoSearchQuery, setPhotoSearchQuery] = useState("")
+  const [readingPhotos, setReadingPhotos] = useState(false)
+  const [ocrProgress, setOcrProgress] = useState(0)
+  const [photoOcrError, setPhotoOcrError] = useState("")
   const [releases, setReleases] = useState<Release[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -32,19 +64,119 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   const [addingId, setAddingId] = useState<number | null>(null)
   const [error, setError] = useState("")
 
+  useLayoutEffect(() => {
+    if (artistSuggestions.length === 0) return
+
+    function updateMaxHeight() {
+      const fieldBottom = artistFieldRef.current?.getBoundingClientRect().bottom
+      if (fieldBottom === undefined) return
+
+      const viewport = window.visualViewport
+      const viewportBottom = viewport
+        ? viewport.offsetTop + viewport.height
+        : window.innerHeight
+      const bottomInset = isMobile ? 28 : 8
+      setArtistSuggestionsMaxHeight(Math.max(0, Math.floor(viewportBottom - fieldBottom - bottomInset)))
+    }
+
+    updateMaxHeight()
+    window.addEventListener("resize", updateMaxHeight)
+    window.addEventListener("scroll", updateMaxHeight, true)
+    window.visualViewport?.addEventListener("resize", updateMaxHeight)
+    window.visualViewport?.addEventListener("scroll", updateMaxHeight)
+
+    return () => {
+      window.removeEventListener("resize", updateMaxHeight)
+      window.removeEventListener("scroll", updateMaxHeight, true)
+      window.visualViewport?.removeEventListener("resize", updateMaxHeight)
+      window.visualViewport?.removeEventListener("scroll", updateMaxHeight)
+    }
+  }, [artistSuggestions.length, isMobile])
+
+  useEffect(() => {
+    if (!barcodeScannerOpen) return
+
+    let active = true
+    let controls: IScannerControls | null = null
+    const video = barcodeVideoRef.current
+
+    if (!video || !navigator.mediaDevices?.getUserMedia) {
+      setBarcodeScannerError("Camera access is unavailable. Enter the barcode manually.")
+      setBarcodeScannerOpen(false)
+      return
+    }
+
+    async function startScanner() {
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/browser")
+        if (!active) return
+
+        const reader = new BrowserMultiFormatReader()
+        const startedControls = await reader.decodeFromConstraints(
+          { audio: false, video: { facingMode: { ideal: "environment" } } },
+          video,
+          (result) => {
+            if (!result || !active) return
+
+            const barcode = normalizeBarcode(result.getText())
+            if (!isValidBarcode(barcode)) {
+              setBarcodeScannerError("This code is not a supported 8 to 14 digit barcode.")
+              setBarcodeScannerOpen(false)
+              return
+            }
+
+            setBarcodeScannerError("")
+            setBarcodeQuery(barcode)
+            setArtistQuery("")
+            setSelectedArtist(null)
+            setAlbumQuery("")
+            setFormat("")
+            setPhotoSearchQuery("")
+            setBarcodeScannerOpen(false)
+          }
+        )
+
+        controls = startedControls
+        scannerControlsRef.current = startedControls
+        if (!active) startedControls.stop()
+      } catch (scanError: unknown) {
+        if (!active) return
+        const errorName = scanError instanceof Error ? scanError.name : ""
+        const message = errorName === "NotAllowedError"
+          ? "Camera access was denied. Allow camera access or enter the barcode manually."
+          : errorName === "NotFoundError"
+            ? "No camera found. Enter the barcode manually."
+            : "Could not start the camera. Check permissions or enter the barcode manually."
+        setBarcodeScannerError(message)
+        setBarcodeScannerOpen(false)
+      }
+    }
+
+    void startScanner()
+
+    return () => {
+      active = false
+      controls?.stop()
+      scannerControlsRef.current?.stop()
+      scannerControlsRef.current = null
+    }
+  }, [barcodeScannerOpen])
+
   useEffect(() => {
     const query = artistQuery.trim()
     const isSelected = selectedArtist?.title.toLowerCase() === query.toLowerCase()
     const controller = new AbortController()
 
-    if (query.length < 2 || isSelected) {
+    if (query.length < 2 || isSelected || barcodeQuery.trim()) {
       setArtistSuggestions([])
       setLoadingArtists(false)
+      setArtistSearchError("")
       return () => controller.abort()
     }
 
     setArtistSuggestions([])
     setLoadingArtists(true)
+    setArtistSearchError("")
     const timeout = setTimeout(async () => {
       try {
         const response = await fetch(buildDiscogsArtistSearchUrl(query, DISCOGS_TOKEN), {
@@ -57,7 +189,10 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         }
         setArtistSuggestions(data.results ?? [])
       } catch {
-        if (!controller.signal.aborted) setArtistSuggestions([])
+        if (!controller.signal.aborted) {
+          setArtistSuggestions([])
+          setArtistSearchError("Could not search artists. Check your connection and try again.")
+        }
       } finally {
         if (!controller.signal.aborted) setLoadingArtists(false)
       }
@@ -67,12 +202,18 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       clearTimeout(timeout)
       controller.abort()
     }
-  }, [artistQuery, selectedArtist])
+  }, [artistQuery, selectedArtist, barcodeQuery])
 
   useEffect(() => {
     const artist = selectedArtist?.title ?? ""
     const album = albumQuery.trim()
-    const canSearch = Boolean(selectedArtist) || (!artistQuery.trim() && album.length >= 2)
+    const query = photoSearchQuery.trim()
+    const barcode = normalizeBarcode(barcodeQuery.trim())
+    const hasBarcodeQuery = barcodeQuery.trim().length > 0
+    const validBarcode = isValidBarcode(barcode)
+    const canSearch = hasBarcodeQuery
+      ? validBarcode
+      : Boolean(query) || Boolean(selectedArtist) || (!artistQuery.trim() && album.length >= 2)
     const controller = new AbortController()
 
     if (!canSearch) {
@@ -83,7 +224,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       return () => controller.abort()
     }
 
-    const cacheKey = JSON.stringify([selectedArtist?.id ?? null, artist.toLowerCase(), album.toLowerCase(), format])
+    const cacheKey = JSON.stringify([selectedArtist?.id ?? null, artist.toLowerCase(), album.toLowerCase(), format, barcode, query.toLowerCase()])
     const cached = releaseCache.get(cacheKey)
     if (cached) {
       setReleases(cached.releases)
@@ -99,7 +240,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
     setNextPage(null)
     const timeout = setTimeout(async () => {
       try {
-        const response = await fetch(buildDiscogsSearchUrl({ artist, album, format }, DISCOGS_TOKEN), {
+        const response = await fetch(buildDiscogsSearchUrl({ artist, album, format, barcode, query }, DISCOGS_TOKEN), {
           signal: controller.signal,
         })
         if (!response.ok) throw new Error("Discogs search failed")
@@ -133,18 +274,66 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       clearTimeout(timeout)
       controller.abort()
     }
-  }, [artistQuery, selectedArtist, albumQuery, format])
+  }, [artistQuery, selectedArtist, albumQuery, format, barcodeQuery, photoSearchQuery])
+
+  async function identifyFromPhotos() {
+    const selectedPhotos = photoAngles
+      .map((angle) => photoFiles[angle.key])
+      .filter((photo): photo is File => photo !== null)
+    if (selectedPhotos.length === 0 || readingPhotos) return
+
+    setReadingPhotos(true)
+    setOcrProgress(0)
+    setPhotoOcrError("")
+    setPhotoSearchQuery("")
+
+    try {
+      const { createWorker } = await import("tesseract.js")
+      const worker = await createWorker("eng+fra", undefined, {
+        logger: ({ progress }) => setOcrProgress(Math.max(0, Math.min(progress, 1))),
+      })
+
+      try {
+        const recognizedText: string[] = []
+        for (const photo of selectedPhotos) {
+          const { data } = await worker.recognize(photo)
+          if (data.text.trim()) recognizedText.push(data.text.trim())
+        }
+
+        const query = recognizedText.join("\n\n").slice(0, 1200).trim()
+        if (!query) {
+          setPhotoOcrError("No readable text found. Try a sharper photo of the cover or center label.")
+          return
+        }
+
+        setPhotoSearchQuery(query)
+        setArtistQuery("")
+        setSelectedArtist(null)
+        setAlbumQuery("")
+        setFormat("")
+        setBarcodeQuery("")
+      } finally {
+        await worker.terminate()
+      }
+    } catch {
+      setPhotoOcrError("Could not read the photos. Check your connection and try again.")
+    } finally {
+      setReadingPhotos(false)
+    }
+  }
 
   async function loadMore() {
     if (nextPage === null || loadingMore) return
     const page = nextPage
     const artist = selectedArtist?.title ?? ""
     const album = albumQuery.trim()
+    const query = photoSearchQuery.trim()
+    const barcode = normalizeBarcode(barcodeQuery.trim())
     setLoadingMore(true)
     setError("")
 
     try {
-      const response = await fetch(buildDiscogsSearchUrl({ artist, album, format }, DISCOGS_TOKEN, page))
+      const response = await fetch(buildDiscogsSearchUrl({ artist, album, format, barcode, query }, DISCOGS_TOKEN, page))
       if (!response.ok) throw new Error("Discogs search failed")
 
       const data = await response.json() as {
@@ -208,6 +397,9 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       setSelectedArtist(null)
       setAlbumQuery("")
       setFormat("")
+      setBarcodeQuery("")
+      setPhotoFiles({ front: null, back: null, label: null })
+      setPhotoSearchQuery("")
       setReleases([])
       setNextPage(null)
     } catch {
@@ -218,11 +410,14 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   }
 
   const waitingForArtistSelection = artistQuery.trim().length >= 2 && !selectedArtist
-  const canSearch = Boolean(selectedArtist) || (!artistQuery.trim() && albumQuery.trim().length >= 2)
+  const normalizedBarcode = normalizeBarcode(barcodeQuery.trim())
+  const canSearch = barcodeQuery.trim()
+    ? isValidBarcode(normalizedBarcode)
+    : Boolean(photoSearchQuery.trim()) || Boolean(selectedArtist) || (!artistQuery.trim() && albumQuery.trim().length >= 2)
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: 0 }}>
-      <div style={{ position: "relative" }}>
+      <div ref={artistFieldRef} style={{ position: "relative" }}>
         <label style={fieldStyle}>
           <span>Artist</span>
           <input
@@ -232,13 +427,18 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
               setSelectedArtist(null)
               setArtistQuery(event.target.value)
             }}
-            style={inputStyle}
+            style={isMobile ? mobileInputStyle : inputStyle}
             autoComplete="off"
           />
         </label>
         {loadingArtists && <p style={messageStyle}>Searching artists...</p>}
+        {artistSearchError && <p role="alert" style={errorStyle}>{artistSearchError}</p>}
         {artistSuggestions.length > 0 && (
-          <div role="listbox" aria-label="Discogs artists" style={artistSuggestionsStyle}>
+          <div
+            role="listbox"
+            aria-label="Discogs artists"
+            style={{ ...artistSuggestionsStyle, maxHeight: `${artistSuggestionsMaxHeight}px` }}
+          >
             {artistSuggestions.map((artist) => (
               <button
                 key={artist.id}
@@ -266,20 +466,101 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
           placeholder="Search by album..."
           value={albumQuery}
           onChange={(event) => setAlbumQuery(event.target.value)}
-          style={inputStyle}
+          style={isMobile ? mobileInputStyle : inputStyle}
           autoComplete="off"
         />
       </label>
 
       <label style={fieldStyle}>
         <span>Format</span>
-        <select value={format} onChange={(event) => setFormat(event.target.value)} style={inputStyle}>
+        <select value={format} onChange={(event) => setFormat(event.target.value)} style={isMobile ? mobileInputStyle : inputStyle}>
           <option value="">All formats</option>
           {formatOptions.map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
       </label>
 
-      {waitingForArtistSelection && !loadingArtists && artistSuggestions.length === 0 && (
+      <div style={barcodeRowStyle}>
+        <label style={{ ...fieldStyle, flex: 1, minWidth: 0 }}>
+          <span>Barcode</span>
+          <input
+            value={barcodeQuery}
+            onChange={(event) => {
+              const value = event.target.value
+              setBarcodeQuery(value)
+              if (value.trim()) {
+                setArtistQuery("")
+                setSelectedArtist(null)
+                setAlbumQuery("")
+                setFormat("")
+                setPhotoSearchQuery("")
+              }
+            }}
+            placeholder="EAN / UPC digits..."
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={18}
+            style={isMobile ? mobileInputStyle : inputStyle}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            setBarcodeScannerError("")
+            setBarcodeScannerOpen(true)
+          }}
+          style={barcodeScanButtonStyle}
+        >
+          Scan barcode
+        </button>
+      </div>
+      {barcodeQuery.trim() && !isValidBarcode(normalizeBarcode(barcodeQuery.trim())) && (
+        <p style={messageStyle}>Enter an 8 to 14 digit barcode.</p>
+      )}
+      {barcodeScannerError && <p role="alert" style={errorStyle}>{barcodeScannerError}</p>}
+
+      <details style={photoSectionStyle}>
+        <summary style={photoSummaryStyle}>Identify from cover and record photos</summary>
+        <p style={messageStyle}>Photos are read on this device. Only the detected text is used for the Discogs search.</p>
+        {photoAngles.map((angle) => (
+          <label key={angle.key} style={photoFieldStyle}>
+            <span>{angle.label}</span>
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => {
+                const file = event.target.files?.[0] ?? null
+                setPhotoFiles((current) => ({ ...current, [angle.key]: file }))
+                setPhotoOcrError("")
+              }}
+              style={photoFileInputStyle}
+            />
+          </label>
+        ))}
+        <button
+          type="button"
+          disabled={readingPhotos || !Object.values(photoFiles).some(Boolean)}
+          onClick={() => void identifyFromPhotos()}
+          style={photoOcrButtonStyle}
+        >
+          {readingPhotos ? `Reading text locally... ${Math.round(ocrProgress * 100)}%` : "Read text from photos"}
+        </button>
+        {photoOcrError && <p role="alert" style={errorStyle}>{photoOcrError}</p>}
+        {photoSearchQuery && (
+          <label style={fieldStyle}>
+            <span>Detected text (edit to refine the search)</span>
+            <textarea
+              rows={4}
+              maxLength={1200}
+              value={photoSearchQuery}
+              onChange={(event) => setPhotoSearchQuery(event.target.value)}
+              style={ocrTextStyle}
+            />
+          </label>
+        )}
+      </details>
+
+      {waitingForArtistSelection && !loadingArtists && !artistSearchError && artistSuggestions.length === 0 && (
         <p style={messageStyle}>No artists found. Try another name or search by album only.</p>
       )}
       {waitingForArtistSelection && artistSuggestions.length > 0 && (
@@ -292,6 +573,34 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       {error && <p role="alert" style={errorStyle}>{error}</p>}
       {canSearch && !loading && !error && releases.length === 0 && (
         <p style={messageStyle}>No releases found. Try changing your search.</p>
+      )}
+
+      {barcodeScannerOpen && (
+        <div style={barcodeScannerBackdropStyle} onClick={() => setBarcodeScannerOpen(false)}>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="barcode-scanner-title"
+            style={barcodeScannerDialogStyle}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 id="barcode-scanner-title" style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>
+                Scan vinyl barcode
+              </h2>
+              <button
+                type="button"
+                aria-label="Close scanner"
+                onClick={() => setBarcodeScannerOpen(false)}
+                style={scannerCloseButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+            <video ref={barcodeVideoRef} muted playsInline autoPlay style={scannerVideoStyle} />
+            <p style={messageStyle}>Center the barcode in the camera view.</p>
+          </section>
+        </div>
       )}
 
       {releases.length > 0 && (
@@ -352,6 +661,8 @@ const inputStyle = {
   boxSizing: "border-box" as const,
 }
 
+const mobileInputStyle = { ...inputStyle, fontSize: "16px" }
+
 const messageStyle = {
   color: colors.textTertiary,
   fontSize: "12px",
@@ -362,6 +673,109 @@ const errorStyle = {
   color: colors.danger,
   fontSize: "12px",
   margin: "2px 0",
+}
+
+const barcodeRowStyle = {
+  display: "flex",
+  alignItems: "flex-end",
+  gap: "8px",
+  minWidth: 0,
+}
+
+const barcodeScanButtonStyle = {
+  flexShrink: 0,
+  minHeight: "42px",
+  padding: "0 12px",
+  border: "none",
+  borderRadius: "8px",
+  background: colors.accent,
+  color: colors.card,
+  fontSize: "14px",
+  cursor: "pointer",
+}
+
+const barcodeScannerBackdropStyle = {
+  position: "fixed" as const,
+  inset: 0,
+  zIndex: 400,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "16px",
+  boxSizing: "border-box" as const,
+  background: "rgba(30,24,19,0.72)",
+}
+
+const barcodeScannerDialogStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "14px",
+  width: "min(100%, 460px)",
+  padding: "16px",
+  boxSizing: "border-box" as const,
+  borderRadius: "12px",
+  background: colors.bg,
+}
+
+const scannerCloseButtonStyle = {
+  width: "40px",
+  height: "40px",
+  border: "none",
+  background: "transparent",
+  color: colors.textSecondary,
+  fontSize: "28px",
+  cursor: "pointer",
+}
+
+const scannerVideoStyle = {
+  display: "block",
+  width: "100%",
+  aspectRatio: "4 / 3",
+  objectFit: "cover" as const,
+  borderRadius: "8px",
+  background: colors.textPrimary,
+}
+
+const photoSectionStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "10px",
+  paddingTop: "10px",
+  borderTop: `1px solid ${colors.border}`,
+}
+
+const photoSummaryStyle = {
+  color: colors.textPrimary,
+  fontSize: "14px",
+  cursor: "pointer",
+}
+
+const photoFieldStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "5px",
+  color: colors.textSecondary,
+  fontSize: "12px",
+}
+
+const photoFileInputStyle = {
+  width: "100%",
+  color: colors.textPrimary,
+  fontSize: "12px",
+}
+
+const photoOcrButtonStyle = {
+  ...barcodeScanButtonStyle,
+  width: "100%",
+  background: colors.textPrimary,
+}
+
+const ocrTextStyle = {
+  ...inputStyle,
+  minHeight: "96px",
+  resize: "vertical" as const,
+  fontFamily: "inherit",
+  lineHeight: 1.4,
 }
 
 const resultsStyle = {
@@ -436,7 +850,6 @@ const artistSuggestionsStyle = {
   left: 0,
   right: 0,
   zIndex: 20,
-  maxHeight: "220px",
   overflowY: "auto" as const,
   background: colors.card,
   border: `1px solid ${colors.border}`,

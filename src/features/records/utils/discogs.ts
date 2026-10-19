@@ -20,6 +20,8 @@ export interface DiscogsSearchCriteria {
   artist: string
   album: string
   format: string
+  barcode?: string
+  query?: string
 }
 
 export interface DiscogsArtistSuggestion {
@@ -47,10 +49,14 @@ export function buildDiscogsSearchUrl(criteria: DiscogsSearchCriteria, token?: s
   const artist = criteria.artist.trim()
   const album = criteria.album.trim()
   const format = criteria.format.trim()
+  const barcode = criteria.barcode?.trim()
+  const query = criteria.query?.trim()
 
   if (artist) params.set("artist", artist)
   if (album) params.set("release_title", album)
   if (format) params.set("format", format)
+  if (barcode) params.set("barcode", barcode)
+  if (query) params.set("q", query)
   if (token) params.set("token", token)
 
   return `https://api.discogs.com/database/search?${params.toString()}`

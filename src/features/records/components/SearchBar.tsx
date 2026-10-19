@@ -10,7 +10,7 @@ interface SearchBarProps {
 export default function SearchBar({
   value,
   onChange,
-  placeholder = "Search artist or album...",
+  placeholder = "Filter list by artist or album...",
 }: SearchBarProps) {
   function handleChange(
     e: ChangeEvent<HTMLInputElement>

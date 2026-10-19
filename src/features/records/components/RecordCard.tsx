@@ -149,6 +149,7 @@ const actionButtonStyle = {
   color: colors.card,
   fontSize: "24px",
   cursor: "pointer",
+  marginRight: "24px",
 }
 
 const favoriteButtonStyle = {

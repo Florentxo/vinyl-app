@@ -24,6 +24,32 @@ describe("buildDiscogsSearchUrl", () => {
     expect(url.searchParams.has("artist")).toBe(false)
   })
 
+  it("searches by barcode without requiring artist or album", () => {
+    const url = new URL(buildDiscogsSearchUrl({
+      artist: "",
+      album: "",
+      format: "",
+      barcode: " 5099747380729 ",
+    }))
+
+    expect(url.searchParams.get("barcode")).toBe("5099747380729")
+    expect(url.searchParams.has("artist")).toBe(false)
+    expect(url.searchParams.has("release_title")).toBe(false)
+  })
+
+  it("searches by OCR text using Discogs' general query", () => {
+    const url = new URL(buildDiscogsSearchUrl({
+      artist: "",
+      album: "",
+      format: "",
+      query: "  Blue Train John Coltrane  ",
+    }))
+
+    expect(url.searchParams.get("q")).toBe("Blue Train John Coltrane")
+    expect(url.searchParams.has("artist")).toBe(false)
+    expect(url.searchParams.has("release_title")).toBe(false)
+  })
+
   it("combines artist, album, format, and an optional token", () => {
     const url = new URL(buildDiscogsSearchUrl(
       { artist: " Bjork ", album: " Debut ", format: " Vinyl " },
