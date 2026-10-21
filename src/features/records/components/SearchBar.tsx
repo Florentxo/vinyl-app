@@ -5,12 +5,14 @@ interface SearchBarProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  compact?: boolean
 }
 
 export default function SearchBar({
   value,
   onChange,
   placeholder = "Filter list by artist or album...",
+  compact = false,
 }: SearchBarProps) {
   function handleChange(
     e: ChangeEvent<HTMLInputElement>
@@ -24,7 +26,7 @@ export default function SearchBar({
       placeholder={placeholder}
       value={value}
       onChange={handleChange}
-      style={searchStyle}
+      style={{ ...searchStyle, ...(compact ? compactSearchStyle : {}) }}
     />
   )
 }
@@ -44,4 +46,10 @@ const searchStyle = {
   marginBottom: "25px",
   boxSizing: "border-box" as const,
   outline: "none",
+}
+
+const compactSearchStyle = {
+  padding: "12px",
+  borderRadius: "8px",
+  marginBottom: 0,
 }

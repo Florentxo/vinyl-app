@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { ArrowDownWideNarrow, ListFilter } from "lucide-react"
 
 import VinylSearch from "../components/VinylSearch"
 import RecordCard from "../components/RecordCard"
@@ -15,18 +16,22 @@ interface GenericViewProps {
   type: "collection" | "favorites" | "wishlist"
 }
 
-type SortOrder = "artist" | "album" | "genre" | "year-newest" | "year-oldest"
+type SortOrder = "artist" | "artist-desc" | "album" | "album-desc" | "genre" | "genre-desc" | "year-newest" | "year-oldest"
 
 const sortOptions: { value: SortOrder; label: string }[] = [
   { value: "artist", label: "Artist A-Z" },
+  { value: "artist-desc", label: "Artist Z-A" },
   { value: "album", label: "Album A-Z" },
+  { value: "album-desc", label: "Album Z-A" },
   { value: "genre", label: "Genre A-Z" },
+  { value: "genre-desc", label: "Genre Z-A" },
   { value: "year-newest", label: "Year : Newest" },
   { value: "year-oldest", label: "Year : Oldest" },
 ]
 
 export default function GenericView({ title, type }: GenericViewProps) {
   const [search, setSearch] = useState("")
+  const [filterOpen, setFilterOpen] = useState(false)
   const [sortOrder, setSortOrder] = useState<SortOrder>("artist")
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
@@ -35,6 +40,8 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const sortControlRef = useRef<HTMLDivElement>(null)
   const sortTriggerRef = useRef<HTMLButtonElement>(null)
   const sortOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const filterTriggerRef = useRef<HTMLButtonElement>(null)
+  const filterSearchRef = useRef<HTMLDivElement>(null)
 
   const isMobile = useIsMobile()
 
@@ -72,6 +79,19 @@ export default function GenericView({ title, type }: GenericViewProps) {
       document.removeEventListener("keydown", closeOnEscape)
     }
   }, [sortMenuOpen, sortOrder])
+
+  useEffect(() => {
+    if (!filterOpen) return
+
+    function closeFilterOnOutsidePointer(event: PointerEvent) {
+      const target = event.target as Node
+      if (filterTriggerRef.current?.contains(target) || filterSearchRef.current?.contains(target)) return
+      setFilterOpen(false)
+    }
+
+    document.addEventListener("pointerdown", closeFilterOnOutsidePointer)
+    return () => document.removeEventListener("pointerdown", closeFilterOnOutsidePointer)
+  }, [filterOpen])
 
   function selectItem(item: VinylRecord) {
     setSelectedRecord(item)
@@ -120,14 +140,18 @@ export default function GenericView({ title, type }: GenericViewProps) {
     })
     .sort((a, b) => {
       const artistOrder = a.artist.localeCompare(b.artist, undefined, { sensitivity: "base" })
-      if (sortOrder === "album") {
-        return a.album.localeCompare(b.album, undefined, { sensitivity: "base" }) || artistOrder
+      if (sortOrder === "artist-desc") return -artistOrder
+      if (sortOrder === "album" || sortOrder === "album-desc") {
+        const albumOrder = a.album.localeCompare(b.album, undefined, { sensitivity: "base" })
+        if (albumOrder !== 0) return sortOrder === "album-desc" ? -albumOrder : albumOrder
+        return artistOrder
       }
-      if (sortOrder === "genre") {
+      if (sortOrder === "genre" || sortOrder === "genre-desc") {
         const genreA = a.genre.trim()
         const genreB = b.genre.trim()
         if (Boolean(genreA) !== Boolean(genreB)) return genreA ? -1 : 1
-        return genreA.localeCompare(genreB, undefined, { sensitivity: "base" }) || artistOrder
+        const genreOrder = genreA.localeCompare(genreB, undefined, { sensitivity: "base" })
+        return (sortOrder === "genre-desc" ? -genreOrder : genreOrder) || artistOrder
       }
       if (sortOrder === "year-newest" || sortOrder === "year-oldest") {
         const yearA = Number.parseInt(a.year, 10)
@@ -145,7 +169,6 @@ export default function GenericView({ title, type }: GenericViewProps) {
 
   const sortControl = (
     <div ref={sortControlRef} style={sortControlStyle}>
-      <span>Sort by</span>
       <div style={sortMenuContainerStyle}>
         <button
           ref={sortTriggerRef}
@@ -158,10 +181,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" || event.key === "ArrowUp") setSortMenuOpen(true)
           }}
-          style={{ ...sortTriggerStyle, fontSize: isMobile ? "16px" : "14px" }}
+          style={toolbarButtonStyle}
         >
-          <span>{sortOptions.find((option) => option.value === sortOrder)?.label}</span>
-          <span aria-hidden="true">⌄</span>
+          <ArrowDownWideNarrow aria-hidden="true" size={18} strokeWidth={1.8} />
+          <span>Sort</span>
         </button>
         {sortMenuOpen && (
           <div
@@ -210,6 +233,37 @@ export default function GenericView({ title, type }: GenericViewProps) {
     </div>
   )
 
+  const filterToggle = (
+    <button
+      ref={filterTriggerRef}
+      type="button"
+      aria-label="Filter records"
+      aria-expanded={filterOpen}
+      aria-controls={filterOpen ? "record-filter" : undefined}
+      onClick={() => setFilterOpen((open) => !open)}
+      style={{ ...toolbarButtonStyle, width: "100%", color: filterOpen || search ? colors.accent : colors.textPrimary }}
+    >
+      <ListFilter aria-hidden="true" size={18} strokeWidth={1.8} />
+      <span>Filter</span>
+    </button>
+  )
+
+  const filterSearch = filterOpen && (
+    <div ref={filterSearchRef} id="record-filter" style={filterInputStyle}>
+      <SearchBar compact value={search} onChange={setSearch} />
+    </div>
+  )
+
+  const filterToolbar = (
+    <div style={toolbarStyle}>
+      <div style={filterControlStyle}>
+        {filterToggle}
+        {filterSearch}
+      </div>
+      {sortControl}
+    </div>
+  )
+
   return (
       <div
         style={{ ...mainStyle, display: "flex", flexDirection: "column" }}
@@ -233,31 +287,19 @@ export default function GenericView({ title, type }: GenericViewProps) {
           </span>
         </div>
 
-        {/* DESKTOP — two bars side by side */}
-        {!isMobile && (
-          <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
-
-            <div style={{ flex: 1 }}>
-              <p style={labelStyle}>SEARCH</p>
-              <SearchBar value={search} onChange={setSearch} />
-              {sortControl}
+        {isMobile ? (
+          filterToolbar
+        ) : (
+          <div style={desktopHeaderColumnsStyle}>
+            <div style={desktopHeaderColumnStyle}>
+              {filterToolbar}
             </div>
-
             {type !== "favorites" && (
-              <div style={{ flex: 1 }}>
+              <div style={desktopHeaderColumnStyle}>
                 <p style={labelStyle}>ADD A VINYL</p>
                 <VinylSearch onAdd={addOrMove} />
               </div>
             )}
-
-          </div>
-        )}
-
-        {/* MOBILE — search bar only */}
-        {isMobile && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <SearchBar value={search} onChange={setSearch} />
-            {sortControl}
           </div>
         )}
 
@@ -418,14 +460,63 @@ const labelStyle = {
 
 const sortControlStyle = {
   display: "flex",
+  flex: 1,
+  minWidth: 0,
+}
+
+const desktopHeaderColumnsStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "16px",
+}
+
+const desktopHeaderColumnStyle = {
+  flex: 1,
+  minWidth: 0,
+}
+
+const toolbarStyle = {
+  display: "flex",
   alignItems: "center",
-  gap: "10px",
-  marginTop: "10px",
+  gap: "12px",
   width: "100%",
   minWidth: 0,
+  marginTop: "10px",
+  paddingTop: "8px",
+  borderTop: `1px solid ${colors.border}`,
+}
+
+const toolbarButtonStyle = {
+  display: "flex",
+  flex: 1,
+  alignItems: "center",
+  justifyContent: "flex-start",
+  gap: "7px",
+  minWidth: 0,
+  padding: "9px 6px",
+  border: "none",
+  borderRadius: "6px",
+  background: "transparent",
+  color: colors.textPrimary,
+  fontSize: "16px",
+  textAlign: "left" as const,
+  whiteSpace: "nowrap" as const,
+  cursor: "pointer",
+}
+
+const filterControlStyle = {
+  position: "relative" as const,
+  flex: 1,
+  minWidth: 0,
+}
+
+const filterInputStyle = {
+  position: "absolute" as const,
+  top: "calc(100% + 4px)",
+  left: 0,
+  right: 0,
+  zIndex: 40,
   boxSizing: "border-box" as const,
-  color: colors.textSecondary,
-  fontSize: "12px",
 }
 
 const sortMenuContainerStyle = {
