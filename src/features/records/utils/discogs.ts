@@ -44,7 +44,8 @@ export function buildDiscogsSearchUrl(criteria: DiscogsSearchCriteria, token?: s
     per_page: "20",
     page: page.toString(),
   })
-  const artist = criteria.artist.trim()
+  // Discogs search titles can omit the numeric suffix used to distinguish artists.
+  const artist = criteria.artist.trim().replace(/\s+\(\d+\)$/, "")
   const album = criteria.album.trim()
   const format = criteria.format.trim()
 
@@ -60,8 +61,12 @@ export function matchesDiscogsArtist(title: string, artistName: string) {
   const separator = title.indexOf(" - ")
   if (separator < 1) return false
 
-  const listedArtist = title.slice(0, separator).split(" = ")[0].trim()
-  return listedArtist.localeCompare(artistName.trim(), undefined, { sensitivity: "accent" }) === 0
+  const listedArtist = title.slice(0, separator).split(" = ")[0].trim().replace(/\*$/, "").trim()
+  const selectedArtist = artistName.trim()
+  const comparisonArtist = /\s+\(\d+\)$/.test(listedArtist)
+    ? selectedArtist
+    : selectedArtist.replace(/\s+\(\d+\)$/, "")
+  return listedArtist.localeCompare(comparisonArtist, undefined, { sensitivity: "accent" }) === 0
 }
 
 export function mapDiscogsRelease(release: DiscogsReleaseResult, fallbackArtist: string): Release {

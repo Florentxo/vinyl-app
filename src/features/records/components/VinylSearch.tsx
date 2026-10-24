@@ -20,6 +20,7 @@ const formatOptions = ["Vinyl", "LP", '12"', '7"', "CD", "Cassette"]
 
 export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProps) {
   const artistFieldRef = useRef<HTMLDivElement>(null)
+  const releaseSearchRef = useRef<AbortController | null>(null)
   const [artistQuery, setArtistQuery] = useState("")
   const [selectedArtist, setSelectedArtist] = useState<DiscogsArtistSuggestion | null>(null)
   const [artistSuggestions, setArtistSuggestions] = useState<DiscogsArtistSuggestion[]>([])
@@ -89,6 +90,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         const data = await response.json() as {
           results?: DiscogsArtistSuggestion[]
         }
+        if (controller.signal.aborted) return
         setArtistSuggestions(data.results ?? [])
       } catch {
         if (!controller.signal.aborted) {
@@ -107,10 +109,12 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   }, [artistQuery, selectedArtist])
 
   useEffect(() => {
-    const artist = selectedArtist?.title ?? ""
+    const artist = selectedArtist?.title ?? artistQuery.trim()
     const album = albumQuery.trim()
-    const canSearch = Boolean(selectedArtist) || (!artistQuery.trim() && album.length >= 2)
+    const canSearch = artist.length >= 2 || album.length >= 2
     const controller = new AbortController()
+    releaseSearchRef.current = controller
+    setLoadingMore(false)
 
     if (!canSearch) {
       setReleases([])
@@ -145,6 +149,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
           results?: DiscogsReleaseResult[]
           pagination?: { page: number; pages: number }
         }
+        if (controller.signal.aborted) return
         const matchingResults = (data.results ?? []).filter((release) =>
           !selectedArtist || matchesDiscogsArtist(release.title, selectedArtist.title)
         )
@@ -173,21 +178,25 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   }, [artistQuery, selectedArtist, albumQuery, format])
 
   async function loadMore() {
-    if (nextPage === null || loadingMore) return
+    const controller = releaseSearchRef.current
+    if (nextPage === null || loadingMore || !controller || controller.signal.aborted) return
     const page = nextPage
-    const artist = selectedArtist?.title ?? ""
+    const artist = selectedArtist?.title ?? artistQuery.trim()
     const album = albumQuery.trim()
     setLoadingMore(true)
     setError("")
 
     try {
-      const response = await fetch(buildDiscogsSearchUrl({ artist, album, format }, DISCOGS_TOKEN, page))
+      const response = await fetch(buildDiscogsSearchUrl({ artist, album, format }, DISCOGS_TOKEN, page), {
+        signal: controller.signal,
+      })
       if (!response.ok) throw new Error("Discogs search failed")
 
       const data = await response.json() as {
         results?: DiscogsReleaseResult[]
         pagination?: { page: number; pages: number }
       }
+      if (controller.signal.aborted) return
       const matchingResults = (data.results ?? []).filter((release) =>
         !selectedArtist || matchesDiscogsArtist(release.title, selectedArtist.title)
       )
@@ -200,9 +209,9 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         ? data.pagination.page + 1
         : null)
     } catch {
-      setError("Could not load more releases. Please try again.")
+      if (!controller.signal.aborted) setError("Could not load more releases. Please try again.")
     } finally {
-      setLoadingMore(false)
+      if (!controller.signal.aborted) setLoadingMore(false)
     }
   }
 
@@ -254,8 +263,8 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
     }
   }
 
-  const waitingForArtistSelection = artistQuery.trim().length >= 2 && !selectedArtist
-  const canSearch = Boolean(selectedArtist) || (!artistQuery.trim() && albumQuery.trim().length >= 2)
+  const hasArtistQuery = artistQuery.trim().length >= 2 && !selectedArtist
+  const canSearch = artistQuery.trim().length >= 2 || albumQuery.trim().length >= 2
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: 0 }}>
@@ -321,13 +330,13 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         </select>
       </label>
 
-      {waitingForArtistSelection && !loadingArtists && !artistSearchError && artistSuggestions.length === 0 && (
-        <p style={messageStyle}>No artists found. Try another name or search by album only.</p>
+      {hasArtistQuery && !loadingArtists && !artistSearchError && artistSuggestions.length === 0 && (
+        <p style={messageStyle}>No artist suggestions found. You can still search by artist and album.</p>
       )}
-      {waitingForArtistSelection && artistSuggestions.length > 0 && (
-        <p style={messageStyle}>Select the matching artist to exclude Discogs homonyms.</p>
+      {hasArtistQuery && artistSuggestions.length > 0 && (
+        <p style={messageStyle}>You can select an artist to refine results, or keep searching by artist and album.</p>
       )}
-      {!canSearch && !waitingForArtistSelection && (
+      {!canSearch && (
         <p style={messageStyle}>Enter at least 2 characters in Artist or Album.</p>
       )}
       {loading && <p style={messageStyle}>Searching Discogs...</p>}

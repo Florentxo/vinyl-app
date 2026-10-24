@@ -46,6 +46,25 @@ describe("buildDiscogsSearchUrl", () => {
     expect(url.searchParams.get("page")).toBe("2")
     expect(url.searchParams.has("sort_order")).toBe(false)
   })
+
+  it.each([1, 2])("searches Justice (3) by its credited name on page %i", (page) => {
+    const url = new URL(buildDiscogsSearchUrl(
+      { artist: " Justice (3) ", album: " Cross ", format: " Vinyl " },
+      undefined,
+      page
+    ))
+
+    expect(url.searchParams.get("artist")).toBe("Justice")
+    expect(url.searchParams.get("release_title")).toBe("Cross")
+    expect(url.searchParams.get("format")).toBe("Vinyl")
+    expect(url.searchParams.get("page")).toBe(String(page))
+  })
+
+  it("preserves parentheses that are part of an artist name", () => {
+    const url = new URL(buildDiscogsSearchUrl({ artist: "Sunn O)))", album: "", format: "" }))
+
+    expect(url.searchParams.get("artist")).toBe("Sunn O)))")
+  })
 })
 
 describe("buildDiscogsArtistSearchUrl", () => {
@@ -58,6 +77,19 @@ describe("buildDiscogsArtistSearchUrl", () => {
 })
 
 describe("matchesDiscogsArtist", () => {
+  it("accepts Justice releases without the artist disambiguation suffix", () => {
+    expect(matchesDiscogsArtist("Justice - Cross", "Justice (3)")).toBe(true)
+    expect(matchesDiscogsArtist("Justice (3) - Cross", "Justice (3)")).toBe(true)
+    expect(matchesDiscogsArtist("Justice* - Cross", "Justice (3)")).toBe(true)
+    expect(matchesDiscogsArtist("Justice (2) - Other album", "Justice (3)")).toBe(false)
+    expect(matchesDiscogsArtist("Justice Crew - Other album", "Justice (3)")).toBe(false)
+  })
+
+  it("handles alternate names and casing for a numbered artist", () => {
+    expect(matchesDiscogsArtist("JUSTICE = Alternate Name* - Cross", " Justice (3) ")).toBe(true)
+    expect(matchesDiscogsArtist("Album without artist", "Justice (3)")).toBe(false)
+  })
+
   it("accepts the selected artist and excludes homonyms", () => {
     expect(matchesDiscogsArtist("Nirvana - In Utero", "Nirvana")).toBe(true)
     expect(matchesDiscogsArtist("Nirvana (2) - Pentecost Hotel", "Nirvana")).toBe(false)

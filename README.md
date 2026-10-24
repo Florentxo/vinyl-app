@@ -17,6 +17,12 @@ VITE_DISCOGS_TOKEN=your-discogs-token
 
 `VITE_DISCOGS_TOKEN` est facultatif, mais les requêtes Discogs sans jeton sont soumises aux limites publiques de l'API. Les variables préfixées par `VITE_` sont intégrées au code envoyé au navigateur : ne jamais y placer une clé Supabase `service_role` ni un secret serveur. Pour un déploiement public, servir les requêtes Discogs depuis un proxy ou une Supabase Edge Function.
 
+## Recherche Discogs
+
+Les champs Artiste et Album peuvent être utilisés seuls ou ensemble, avec un filtre de format facultatif. Saisir au moins deux caractères dans l'un des deux champs lance la recherche ; sélectionner une suggestion d'artiste est facultatif.
+
+Les suffixes numériques Discogs (par exemple `Justice (3)`) sont retirés du nom envoyé à la recherche. Après sélection, le filtre accepte les titres crédités sans suffixe ou avec le même suffixe et exclut les suffixes explicitement différents. Ce filtrage par nom ne garantit pas la distinction des homonymes lorsque Discogs omet leur suffixe dans les résultats.
+
 ## Supabase
 
 Créer une table `public.records` avec les colonnes attendues par l'application :
@@ -39,3 +45,4 @@ Activer la Row Level Security (RLS) sur cette table et créer des politiques `se
 
 - `npm run build` : build de production.
 - `npm run lint` : vérification ESLint.
+- `npm test` : tests des utilitaires de recherche Discogs.
