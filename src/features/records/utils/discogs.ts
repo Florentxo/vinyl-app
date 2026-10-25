@@ -28,6 +28,60 @@ export interface DiscogsArtistSuggestion {
   thumb?: string
 }
 
+export interface DiscogsTrack {
+  position?: string
+  title: string
+  duration?: string
+  type_?: string
+  sub_tracks?: DiscogsTrack[]
+}
+
+export interface DiscogsReleaseDetails {
+  genres?: string[]
+  styles?: string[]
+  images?: { uri?: string }[]
+  tracklist?: DiscogsTrack[]
+}
+
+export async function fetchDiscogsReleaseDetails(id: number, token?: string, signal?: AbortSignal): Promise<DiscogsReleaseDetails> {
+  const params = new URLSearchParams()
+  if (token) params.set("token", token)
+  const response = await fetch(`https://api.discogs.com/releases/${id}${params.size ? `?${params}` : ""}`, { signal })
+  if (!response.ok) throw new Error(`Discogs release request failed (${response.status})`)
+  return response.json()
+}
+
+export async function fetchRecordDetails(
+  record: { artist: string; album: string; discogs_release_id?: number | null },
+  token?: string,
+  signal?: AbortSignal
+): Promise<DiscogsReleaseDetails> {
+  if (record.discogs_release_id != null) {
+    return fetchDiscogsReleaseDetails(record.discogs_release_id, token, signal)
+  }
+
+  const searchUrl = buildDiscogsSearchUrl({ artist: record.artist, album: record.album, format: "Vinyl" }, token)
+  const search = await fetch(searchUrl, { signal })
+  if (!search.ok) throw new Error(`Discogs search failed (${search.status})`)
+  const data = await search.json() as { results?: { id: number }[] }
+  const release = data.results?.[0]
+  if (release) return fetchDiscogsReleaseDetails(release.id, token, signal)
+
+  const masterUrl = new URL(searchUrl)
+  masterUrl.searchParams.set("type", "master")
+  masterUrl.searchParams.delete("format")
+  const fallback = await fetch(masterUrl.toString(), { signal })
+  if (!fallback.ok) throw new Error(`Discogs master search failed (${fallback.status})`)
+  const masters = await fallback.json() as { results?: { id: number }[] }
+  const master = masters.results?.[0]
+  if (!master) return {}
+  const params = new URLSearchParams()
+  if (token) params.set("token", token)
+  const response = await fetch(`https://api.discogs.com/masters/${master.id}${params.size ? `?${params}` : ""}`, { signal })
+  if (!response.ok) throw new Error(`Discogs master request failed (${response.status})`)
+  return response.json()
+}
+
 export function buildDiscogsArtistSearchUrl(query: string, token?: string) {
   const params = new URLSearchParams({
     type: "artist",

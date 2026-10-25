@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ArrowDownWideNarrow, ListFilter } from "lucide-react"
 
 import VinylSearch from "../components/VinylSearch"
@@ -35,8 +35,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const [sortOrder, setSortOrder] = useState<SortOrder>("artist")
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [openActionsId, setOpenActionsId] = useState<string | null>(null)
   const [mobileGenre, setMobileGenre] = useState("")
   const [mobileStyle, setMobileStyle] = useState("")
+  const updateMobileGenreStyle = useCallback((g: string, s: string) => { setMobileGenre(g); setMobileStyle(s) }, [])
   const sortControlRef = useRef<HTMLDivElement>(null)
   const sortTriggerRef = useRef<HTMLButtonElement>(null)
   const sortOptionRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -55,6 +57,17 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const deleteRecord = useRecordsStore((state) => state.deleteRecord)
   const toggleFavorite = useRecordsStore((state) => state.toggleFavorite)
   const changeStatus = useRecordsStore((state) => state.changeStatus)
+
+  useEffect(() => {
+    if (!openActionsId) return
+    function closeActionsOnOutside(event: PointerEvent) {
+      if (!(event.target instanceof Element) || event.target.closest("[data-record-actions-id]")?.getAttribute("data-record-actions-id") !== openActionsId) {
+        setOpenActionsId(null)
+      }
+    }
+    document.addEventListener("pointerdown", closeActionsOnOutside)
+    return () => document.removeEventListener("pointerdown", closeActionsOnOutside)
+  }, [openActionsId])
 
   useEffect(() => {
     if (!sortMenuOpen) return
@@ -322,11 +335,13 @@ export default function GenericView({ title, type }: GenericViewProps) {
           <RecordCard
             key={item.id}
             item={item}
-            type={type}
+            actionsOpen={openActionsId === item.id}
+            onActionsOpenChange={(open) => setOpenActionsId(open ? item.id : null)}
             isSelected={selectedRecord?.id === item.id}
             onSelect={selectItem}
             onToggleFlag={() => toggleFavorite(item.id)}
             onChangeStatus={(item, status) => changeStatus(item.id, status)}
+            onDelete={(item) => deleteRecord(item.id)}
           />
         ))}
       </div>
@@ -392,7 +407,8 @@ export default function GenericView({ title, type }: GenericViewProps) {
                     artist={selectedRecord.artist}
                     album={selectedRecord.album}
                     recordId={selectedRecord.id}
-                    onGenreStyle={(g, s) => { setMobileGenre(g); setMobileStyle(s) }}
+                    discogsReleaseId={selectedRecord.discogs_release_id}
+                    onGenreStyle={updateMobileGenreStyle}
                   />
 
                   {/* DELETE */}

@@ -5,6 +5,7 @@ export interface VinylRecord {
   year: string
   genre: string
   cover_url?: string
+  discogs_release_id?: number | null
   favorite: boolean
   status: "owned" | "wishlist"
 }

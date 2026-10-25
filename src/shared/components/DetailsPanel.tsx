@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { useRecordsStore } from "../../features/records/store/recordsStore"
 import TracklistSection from "../../features/records/components/TracklistSection"
 import { colors } from "../../theme"
@@ -14,6 +14,7 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
 
   const [genre, setGenre] = useState("")
   const [style, setStyle] = useState("")
+  const updateGenreStyle = useCallback((g: string, s: string) => { setGenre(g); setStyle(s) }, [])
 
   if (!selectedRecord) return null
 
@@ -158,7 +159,8 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
           artist={selectedRecord.artist}
           album={selectedRecord.album}
           recordId={selectedRecord.id}
-          onGenreStyle={(g, s) => { setGenre(g); setStyle(s) }}
+          discogsReleaseId={selectedRecord.discogs_release_id}
+          onGenreStyle={updateGenreStyle}
         />
 
       </div>

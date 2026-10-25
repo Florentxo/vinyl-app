@@ -1,13 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { VinylRecord } from "../types/record"
 import { colors } from "../../../theme"
+import ReleasePreview from "./ReleasePreview"
 import {
   buildDiscogsArtistSearchUrl,
   buildDiscogsSearchUrl,
   mapDiscogsRelease,
   matchesDiscogsArtist,
 } from "../utils/discogs"
-import type { DiscogsArtistSuggestion, DiscogsReleaseResult, Release } from "../utils/discogs"
+import type { DiscogsArtistSuggestion, DiscogsReleaseDetails, DiscogsReleaseResult, Release } from "../utils/discogs"
 
 interface VinylSearchProps {
   onAdd: (record: Omit<VinylRecord, "id" | "favorite" | "status">) => boolean | void | Promise<boolean | void>
@@ -34,6 +35,8 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   const [loadingMore, setLoadingMore] = useState(false)
   const [nextPage, setNextPage] = useState<number | null>(null)
   const [addingId, setAddingId] = useState<number | null>(null)
+  const [previewRelease, setPreviewRelease] = useState<Release | null>(null)
+  const [addError, setAddError] = useState("")
   const [error, setError] = useState("")
 
   useLayoutEffect(() => {
@@ -215,34 +218,17 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
     }
   }
 
-  async function selectRelease(release: Release) {
+  async function selectRelease(release: Release, details: DiscogsReleaseDetails | null) {
     setAddingId(release.id)
-    setError("")
-    let genre = ""
-    let coverUrl = release.coverUrl
-
-    try {
-      const params = new URLSearchParams()
-      if (DISCOGS_TOKEN) params.set("token", DISCOGS_TOKEN)
-      const query = params.size ? `?${params}` : ""
-      const response = await fetch(`https://api.discogs.com/releases/${release.id}${query}`)
-      if (response.ok) {
-        const details = await response.json() as {
-          genres?: string[]
-          styles?: string[]
-          images?: { uri?: string }[]
-        }
-        const primaryGenre = details.genres?.[0] ?? ""
-        const primaryStyle = details.styles?.[0] ?? ""
-        genre = primaryStyle ? `${primaryGenre} / ${primaryStyle}` : primaryGenre
-        coverUrl = details.images?.[0]?.uri || coverUrl
-      }
-    } catch {
-      // The search result still contains enough information to add the release.
-    }
+    setAddError("")
+    const primaryGenre = details?.genres?.[0] ?? ""
+    const primaryStyle = details?.styles?.[0] ?? ""
+    const genre = primaryStyle ? `${primaryGenre} / ${primaryStyle}` : primaryGenre
+    const coverUrl = details?.images?.[0]?.uri || release.coverUrl
 
     try {
       const added = await onAdd({
+        discogs_release_id: release.id,
         artist: release.artist,
         album: release.album,
         year: release.year,
@@ -250,6 +236,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         cover_url: coverUrl,
       })
       if (added === false) throw new Error("Could not add this release")
+      setPreviewRelease(null)
       setArtistQuery("")
       setSelectedArtist(null)
       setAlbumQuery("")
@@ -257,7 +244,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       setReleases([])
       setNextPage(null)
     } catch {
-      setError("Could not add this release. Please try again.")
+      setAddError("Could not add this release. Please try again.")
     } finally {
       setAddingId(null)
     }
@@ -355,7 +342,10 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
               key={release.id}
               type="button"
               disabled={addingId !== null}
-              onClick={() => selectRelease(release)}
+              onClick={() => {
+                setAddError("")
+                setPreviewRelease(release)
+              }}
               style={{ ...releaseItemStyle, opacity: addingId === release.id ? 0.6 : 1 }}
             >
               {release.coverUrl ? (
@@ -379,6 +369,17 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         <button type="button" onClick={loadMore} disabled={loadingMore} style={loadMoreStyle}>
           {loadingMore ? "Loading more..." : "Load more releases"}
         </button>
+      )}
+      {previewRelease && (
+        <ReleasePreview
+          key={previewRelease.id}
+          release={previewRelease}
+          isMobile={isMobile}
+          adding={addingId !== null}
+          error={addError}
+          onClose={() => setPreviewRelease(null)}
+          onConfirm={(details) => { void selectRelease(previewRelease, details) }}
+        />
       )}
     </div>
   )
