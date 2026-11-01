@@ -106,7 +106,7 @@ export default function RecordPhotos({ record }: RecordPhotosProps) {
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         capture="environment"
         hidden
         onChange={(event) => {

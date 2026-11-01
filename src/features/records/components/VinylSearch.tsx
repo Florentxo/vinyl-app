@@ -10,27 +10,45 @@ import {
   matchesDiscogsArtist,
 } from "../utils/discogs"
 import type { DiscogsArtistSuggestion, DiscogsReleaseDetails, DiscogsReleaseResult, Release } from "../utils/discogs"
+import {
+  GOOD_MATCH,
+  bestScore,
+  buildScanSearchPlan,
+  mergeReleases,
+  primaryArtist,
+  rankReleases,
+} from "../utils/scanSearch"
 
 interface VinylSearchProps {
   onAdd: (record: Omit<VinylRecord, "id" | "favorite" | "status">) => boolean | void | Promise<boolean | void>
   isMobile?: boolean
+  initialArtist?: string
+  initialAlbum?: string
+  // Romanized names from a scan, tried when the original text finds nothing on Discogs.
+  alternates?: { artist: string; album: string }
 }
 
 const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN
 const releaseCache = new Map<string, { releases: Release[]; nextPage: number | null }>()
 const formatOptions = ["Vinyl", "LP", '12"', '7"', "CD", "Cassette"]
 
-export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProps) {
+export default function VinylSearch({ onAdd, isMobile = false, initialArtist = "", initialAlbum = "", alternates }: VinylSearchProps) {
   const artistFieldRef = useRef<HTMLDivElement>(null)
   const releaseSearchRef = useRef<AbortController | null>(null)
-  const [artistQuery, setArtistQuery] = useState("")
+  // A search coming from a scan starts immediately; typing keeps its debounce.
+  const firstSearchRef = useRef(Boolean(initialArtist || initialAlbum))
+  const [artistQuery, setArtistQuery] = useState(initialArtist)
+  // A prefilled artist (from a scan) should not open the suggestion list over the results.
+  const [suggestionsEnabled, setSuggestionsEnabled] = useState(!initialArtist)
   const [selectedArtist, setSelectedArtist] = useState<DiscogsArtistSuggestion | null>(null)
   const [artistSuggestions, setArtistSuggestions] = useState<DiscogsArtistSuggestion[]>([])
   const [artistSuggestionsMaxHeight, setArtistSuggestionsMaxHeight] = useState(220)
   const [loadingArtists, setLoadingArtists] = useState(false)
   const [artistSearchError, setArtistSearchError] = useState("")
-  const [albumQuery, setAlbumQuery] = useState("")
+  const [albumQuery, setAlbumQuery] = useState(initialAlbum)
   const [format, setFormat] = useState("")
+  const [fallbackNote, setFallbackNote] = useState("")
+  const [triedSearches, setTriedSearches] = useState<string[]>([])
   const [releases, setReleases] = useState<Release[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -73,7 +91,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
     const isSelected = selectedArtist?.title.toLowerCase() === query.toLowerCase()
     const controller = new AbortController()
 
-    if (query.length < 2 || isSelected) {
+    if (query.length < 2 || isSelected || !suggestionsEnabled) {
       setArtistSuggestions([])
       setLoadingArtists(false)
       setArtistSearchError("")
@@ -109,7 +127,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       clearTimeout(timeout)
       controller.abort()
     }
-  }, [artistQuery, selectedArtist])
+  }, [artistQuery, selectedArtist, suggestionsEnabled])
 
   useEffect(() => {
     const artist = selectedArtist?.title ?? artistQuery.trim()
@@ -139,19 +157,29 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
 
     setLoading(true)
     setError("")
+    setFallbackNote("")
+    setTriedSearches([])
     setReleases([])
     setNextPage(null)
+    const delay = firstSearchRef.current ? 0 : 350
     const timeout = setTimeout(async () => {
-      try {
-        const response = await fetch(buildDiscogsSearchUrl({ artist, album, format }, DISCOGS_TOKEN), {
-          signal: controller.signal,
-        })
-        if (!response.ok) throw new Error("Discogs search failed")
-
-        const data = await response.json() as {
+      firstSearchRef.current = false
+      const fetchPage = async (url: string) => {
+        let response = await fetch(url, { signal: controller.signal })
+        // Discogs rate-limits per minute: wait briefly once instead of failing the whole search.
+        if (response.status === 429) {
+          await new Promise((resolve) => setTimeout(resolve, 2500))
+          if (controller.signal.aborted) throw new DOMException("Aborted", "AbortError")
+          response = await fetch(url, { signal: controller.signal })
+        }
+        if (!response.ok) throw Object.assign(new Error("Discogs search failed"), { status: response.status })
+        return await response.json() as {
           results?: DiscogsReleaseResult[]
           pagination?: { page: number; pages: number }
         }
+      }
+      try {
+        const data = await fetchPage(buildDiscogsSearchUrl({ artist, album, format }, DISCOGS_TOKEN))
         if (controller.signal.aborted) return
         const matchingResults = (data.results ?? []).filter((release) =>
           !selectedArtist || matchesDiscogsArtist(release.title, selectedArtist.title)
@@ -160,6 +188,53 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         const followingPage = data.pagination && data.pagination.page < data.pagination.pages
           ? data.pagination.page + 1
           : null
+
+        // Text read from a cover (often in another script) rarely matches Discogs exactly: rank what was found
+        // by similarity and, if nothing is convincing, widen the search step by step.
+        const fromScan = Boolean(initialArtist || initialAlbum)
+        const untouched = artistQuery === initialArtist && albumQuery === initialAlbum
+        if (fromScan && untouched && !selectedArtist) {
+          const target = { artist, album, altArtist: alternates?.artist, altAlbum: alternates?.album }
+          let pool = results
+          let best = bestScore(pool, target)
+          let widenedWith = ""
+          const tried: string[] = []
+          let failures = 0
+          if (best < GOOD_MATCH) {
+            for (const attempt of buildScanSearchPlan(target, format, DISCOGS_TOKEN)) {
+              // A failing widening query (for example Discogs rate limiting) must not discard what was already found.
+              let more: Awaited<ReturnType<typeof fetchPage>>
+              try {
+                more = await fetchPage(attempt.url)
+              } catch (error) {
+                if (controller.signal.aborted) return
+                failures++
+                if (failures >= 2 || (error as { status?: number }).status === 429) break
+                continue
+              }
+              if (controller.signal.aborted) return
+              const found = (more.results ?? []).map((release) => mapDiscogsRelease(release, primaryArtist(artist)))
+              tried.push(attempt.label)
+              const attemptBest = bestScore(found, target)
+              pool = mergeReleases(pool, found)
+              if (attemptBest > best) {
+                best = attemptBest
+                widenedWith = attempt.label
+              }
+              if (best >= GOOD_MATCH) break
+            }
+          }
+          if (pool.length === 0) {
+            setTriedSearches(tried)
+            setReleases([])
+            if (failures > 0) setError("Discogs did not answer every request (it limits how fast you can search). Wait a few seconds and try again.")
+            return
+          }
+          if (widenedWith) setFallbackNote(`No exact match for the text on the cover. Closest matches, found with "${widenedWith}".`)
+          setReleases(rankReleases(pool, target).slice(0, 20))
+          setNextPage(widenedWith ? null : followingPage)
+          return
+        }
 
         releaseCache.set(cacheKey, { releases: results, nextPage: followingPage })
         setReleases(results)
@@ -172,7 +247,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
-    }, 350)
+    }, delay)
 
     return () => {
       clearTimeout(timeout)
@@ -273,6 +348,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
             placeholder="Search by artist..."
             value={artistQuery}
             onChange={(event) => {
+              setSuggestionsEnabled(true)
               setSelectedArtist(null)
               setArtistQuery(event.target.value)
             }}
@@ -338,9 +414,16 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         <p style={messageStyle}>Enter at least 2 characters in Artist or Album.</p>
       )}
       {loading && <p style={messageStyle}>Searching Discogs...</p>}
+      {fallbackNote && releases.length > 0 && <p role="status" style={messageStyle}>{fallbackNote}</p>}
       {error && <p role="alert" style={errorStyle}>{error}</p>}
       {canSearch && !loading && !error && releases.length === 0 && (
         <p style={messageStyle}>No releases found. Try changing your search.</p>
+      )}
+      {canSearch && !loading && !error && releases.length === 0 && triedSearches.length > 0 && (
+        <p role="status" style={messageStyle}>Also tried: {triedSearches.map((search) => `"${search}"`).join(", ")}.</p>
+      )}
+      {canSearch && !loading && !error && releases.length === 0 && Boolean(initialArtist || initialAlbum) && !alternates && (
+        <p role="status" style={messageStyle}>The scan did not provide a romanized name for this record.</p>
       )}
 
       {releases.length > 0 && (

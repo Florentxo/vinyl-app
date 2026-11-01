@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowDownWideNarrow, ChevronDown, ChevronUp, LayoutGrid, List, ListFilter, Pencil, Plus } from "lucide-react"
+import { ArrowDownWideNarrow, ChevronDown, ChevronUp, LayoutGrid, List, ListFilter, Pencil, Plus, ScanLine } from "lucide-react"
 
 import VinylSearch from "../components/VinylSearch"
 import RecordCard from "../components/RecordCard"
@@ -7,6 +7,8 @@ import RecordGridCard from "../components/RecordGridCard"
 import SearchBar from "../components/SearchBar"
 import TracklistSection from "../components/TracklistSection"
 import RecordPhotosDialog from "../components/RecordPhotosDialog"
+import { useSortKey } from "../hooks/useSortKey"
+import ScanDialog from "../components/ScanDialog"
 import { getDisplayCover } from "../utils/photos"
 import { LIST_COLUMN_GAP, LIST_COLUMNS, LIST_ROW_PADDING_LEFT, LIST_ROW_PADDING_RIGHT } from "../utils/listLayout"
 
@@ -50,6 +52,13 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const [sortOrder, setSortOrder] = useState<SortOrder>("artist")
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [scanOpen, setScanOpen] = useState(false)
+  const [prefill, setPrefill] = useState<{ artist: string; album: string; alternates?: { artist: string; album: string } } | null>(null)
+
+  function openAddDialog() {
+    setPrefill(null)
+    setModalOpen(true)
+  }
   const [editId, setEditId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>(readViewMode)
   const [openActionsId, setOpenActionsId] = useState<string | null>(null)
@@ -164,6 +173,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
   }
 
   const editRecord = records.find((record) => record.id === editId) ?? null
+  const sortKeyOf = useSortKey(records.flatMap((record) => [record.artist, record.album]))
 
   const filteredItems = records
     .filter((item) => {
@@ -176,10 +186,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
       return item.status === "owned" && matchesSearch
     })
     .sort((a, b) => {
-      const artistOrder = a.artist.localeCompare(b.artist, undefined, { sensitivity: "base" })
+      const artistOrder = sortKeyOf(a.artist).localeCompare(sortKeyOf(b.artist), undefined, { sensitivity: "base" })
       if (sortOrder === "artist-desc") return -artistOrder
       if (sortOrder === "album" || sortOrder === "album-desc") {
-        const albumOrder = a.album.localeCompare(b.album, undefined, { sensitivity: "base" })
+        const albumOrder = sortKeyOf(a.album).localeCompare(sortKeyOf(b.album), undefined, { sensitivity: "base" })
         if (albumOrder !== 0) return sortOrder === "album-desc" ? -albumOrder : albumOrder
         return artistOrder
       }
@@ -358,9 +368,14 @@ export default function GenericView({ title, type }: GenericViewProps) {
             {filteredItems.length} vinyl{filteredItems.length !== 1 ? "s" : ""}
           </span>
           {type !== "favorites" && !isMobile && (
-            <button type="button" onClick={(event) => { event.stopPropagation(); setModalOpen(true) }} style={addButtonStyle}>
-              <Plus aria-hidden="true" size={16} /> Add a vinyl
-            </button>
+            <div style={{ display: "flex", gap: "8px", marginLeft: "auto", alignSelf: "center" }}>
+              <button type="button" onClick={(event) => { event.stopPropagation(); setScanOpen(true) }} style={scanButtonStyle}>
+                <ScanLine aria-hidden="true" size={16} /> Scan
+              </button>
+              <button type="button" onClick={(event) => { event.stopPropagation(); openAddDialog() }} style={addButtonStyle}>
+                <Plus aria-hidden="true" size={16} /> Add a vinyl
+              </button>
+            </div>
           )}
         </div>
 
@@ -421,7 +436,10 @@ export default function GenericView({ title, type }: GenericViewProps) {
 
       {/* FLOATING BUTTON — mobile only */}
       {type !== "favorites" && isMobile && (
-        <button onClick={() => setModalOpen(true)} style={fabStyle} aria-label="Add a vinyl">+</button>
+        <>
+          <button onClick={() => setScanOpen(true)} style={scanFabStyle} aria-label="Scan a record"><ScanLine size={24} aria-hidden="true" /></button>
+          <button onClick={openAddDialog} style={fabStyle} aria-label="Add a vinyl">+</button>
+        </>
       )}
 
       {/* DETAILS MODAL — mobile only */}
@@ -505,6 +523,17 @@ export default function GenericView({ title, type }: GenericViewProps) {
         <RecordPhotosDialog key={editRecord.id} record={editRecord} onClose={() => setEditId(null)} />
       )}
 
+      {scanOpen && (
+        <ScanDialog
+          onClose={() => setScanOpen(false)}
+          onIdentified={(result) => {
+            setScanOpen(false)
+            setPrefill(result)
+            setModalOpen(true)
+          }}
+        />
+      )}
+
       {/* ADD VINYL MODAL — fullscreen on mobile, centered on desktop */}
       {modalOpen && (
         <div
@@ -524,7 +553,11 @@ export default function GenericView({ title, type }: GenericViewProps) {
             </div>
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
               <VinylSearch
+                key={prefill ? `${prefill.artist}|${prefill.album}` : "blank"}
                 isMobile={isMobile}
+                initialArtist={prefill?.artist}
+                initialAlbum={prefill?.album}
+                alternates={prefill?.alternates}
                 onAdd={async (record) => {
                   const added = await addOrMove(record)
                   if (added) setModalOpen(false)
@@ -719,6 +752,37 @@ const viewToggleButtonStyle = {
   border: "none",
   borderRadius: "8px",
   cursor: "pointer",
+}
+
+const scanButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "9px 16px",
+  border: `1px solid ${colors.accent}`,
+  borderRadius: "20px",
+  background: "transparent",
+  color: colors.accent,
+  fontSize: "14px",
+  cursor: "pointer",
+}
+
+const scanFabStyle = {
+  position: "fixed" as const,
+  bottom: "146px",
+  right: "12px",
+  width: "56px",
+  height: "56px",
+  borderRadius: "50%",
+  background: colors.accent,
+  color: "#fff",
+  border: "none",
+  cursor: "pointer",
+  zIndex: 99,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  boxShadow: `0 4px 12px ${colors.textPrimary}66`,
 }
 
 const addButtonStyle = {

@@ -14,6 +14,7 @@ export function buildSlots(photos: RecordPhoto[], extraDiscs: number): PhotoSlot
 
 export const MAX_PHOTO_INPUT_BYTES = 20 * 1024 * 1024
 export const MAX_PHOTO_DIMENSION = 1600
+export const SCAN_PHOTO_DIMENSION = 1024
 
 export function slotKey(slot: PhotoSlot) {
   return slot.kind === "disc" ? `disc${slot.disc_number}-${slot.side}` : slot.kind
@@ -60,13 +61,34 @@ function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) 
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
 }
 
-export async function compressImage(file: File): Promise<Blob> {
-  if (!file.type.startsWith("image/")) throw new Error("Please choose an image file.")
+const HEIC_NAME = /\.(heic|heif)$/i
+
+// Browsers that cannot decode HEIC (Chrome, Edge, Firefox on desktop) get a lazy-loaded converter.
+async function decodeImage(file: File): Promise<ImageBitmap> {
+  const options: ImageBitmapOptions = { imageOrientation: "from-image" }
+  try {
+    return await createImageBitmap(file, options)
+  } catch {
+    const isHeic = HEIC_NAME.test(file.name) || /^image\/hei[cf]$/i.test(file.type)
+    if (!isHeic) throw new Error("This image format is not supported. Try a JPEG or PNG photo.")
+    try {
+      const { heicTo } = await import("heic-to")
+      const jpeg = await heicTo({ blob: file, type: "image/jpeg", quality: 0.9 })
+      return await createImageBitmap(jpeg, options)
+    } catch {
+      throw new Error("Could not convert this HEIC photo. Try a JPEG or PNG photo.")
+    }
+  }
+}
+
+export async function compressImage(file: File, maxDimension = MAX_PHOTO_DIMENSION, quality = 0.85): Promise<Blob> {
+  // Some systems report no MIME type for HEIC files.
+  if (!file.type.startsWith("image/") && !HEIC_NAME.test(file.name)) throw new Error("Please choose an image file.")
   if (file.size > MAX_PHOTO_INPUT_BYTES) throw new Error("This image is too large (20 MB maximum).")
 
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" })
+  const bitmap = await decodeImage(file)
   try {
-    const { width, height } = fitWithin(bitmap.width, bitmap.height)
+    const { width, height } = fitWithin(bitmap.width, bitmap.height, maxDimension)
     const canvas = document.createElement("canvas")
     canvas.width = width
     canvas.height = height
@@ -75,9 +97,9 @@ export async function compressImage(file: File): Promise<Blob> {
     context.drawImage(bitmap, 0, 0, width, height)
 
     // Browsers that cannot encode WebP silently return PNG, so fall back to JPEG.
-    const webp = await canvasToBlob(canvas, "image/webp", 0.85)
+    const webp = await canvasToBlob(canvas, "image/webp", quality)
     if (webp?.type === "image/webp") return webp
-    const jpeg = await canvasToBlob(canvas, "image/jpeg", 0.85)
+    const jpeg = await canvasToBlob(canvas, "image/jpeg", quality)
     if (!jpeg) throw new Error("Could not process this image.")
     return jpeg
   } finally {

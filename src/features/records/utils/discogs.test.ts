@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   buildDiscogsArtistSearchUrl,
+  buildDiscogsFreeTextSearchUrl,
   buildDiscogsSearchUrl,
   mapDiscogsRelease,
   matchesDiscogsArtist,
@@ -159,6 +160,22 @@ describe("buildDiscogsSearchUrl", () => {
     const url = new URL(buildDiscogsSearchUrl({ artist: "Sunn O)))", album: "", format: "" }))
 
     expect(url.searchParams.get("artist")).toBe("Sunn O)))")
+  })
+})
+
+describe("buildDiscogsFreeTextSearchUrl", () => {
+  it("searches releases with a free-text query, format and token", () => {
+    const url = new URL(buildDiscogsFreeTextSearchUrl(" Kazuo Otani Cat's Eye ", "Vinyl", "tok"))
+    expect(url.searchParams.get("type")).toBe("release")
+    expect(url.searchParams.get("q")).toBe("Kazuo Otani Cat's Eye")
+    expect(url.searchParams.get("format")).toBe("Vinyl")
+    expect(url.searchParams.get("token")).toBe("tok")
+  })
+
+  it("omits empty format and token", () => {
+    const url = new URL(buildDiscogsFreeTextSearchUrl("x", " "))
+    expect(url.searchParams.has("format")).toBe(false)
+    expect(url.searchParams.has("token")).toBe(false)
   })
 })
 

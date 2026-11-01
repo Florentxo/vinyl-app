@@ -12,7 +12,7 @@ describe("newId", () => {
 
   it("still works when crypto.randomUUID is unavailable (insecure context)", () => {
     const realCrypto = crypto
-    vi.stubGlobal("crypto", { getRandomValues: (array: Uint8Array) => realCrypto.getRandomValues(array) })
+    vi.stubGlobal("crypto", { getRandomValues: <T extends Uint8Array<ArrayBuffer>>(array: T) => realCrypto.getRandomValues(array) })
     const first = newId()
     expect(first).toMatch(uuidPattern)
     expect(newId()).not.toBe(first)

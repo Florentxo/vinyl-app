@@ -111,6 +111,14 @@ export function buildDiscogsSearchUrl(criteria: DiscogsSearchCriteria, token?: s
   return `https://api.discogs.com/database/search?${params.toString()}`
 }
 
+// Looser search used as a fallback when the field-based search finds nothing.
+export function buildDiscogsFreeTextSearchUrl(query: string, format: string, token?: string) {
+  const params = new URLSearchParams({ type: "release", per_page: "20", q: query.trim() })
+  if (format.trim()) params.set("format", format.trim())
+  if (token) params.set("token", token)
+  return `https://api.discogs.com/database/search?${params.toString()}`
+}
+
 export function matchesDiscogsArtist(title: string, artistName: string) {
   const separator = title.indexOf(" - ")
   if (separator < 1) return false
