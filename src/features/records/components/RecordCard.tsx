@@ -1,7 +1,9 @@
 import { useRef, useState } from "react"
-import { MoreHorizontal, Plus, Star, Trash2 } from "lucide-react"
+import { MoreHorizontal, Pencil, Plus, Star, Trash2 } from "lucide-react"
 import type { VinylRecord } from "../types/record"
 import { colors } from "../../../theme"
+import { getDisplayCover } from "../utils/photos"
+import { LIST_COLUMN_GAP, LIST_COLUMNS, LIST_COVER_SIZE, LIST_ROW_PADDING_LEFT, LIST_ROW_PADDING_RIGHT } from "../utils/listLayout"
 
 type ActionResult = boolean | void | Promise<boolean | void>
 
@@ -14,11 +16,14 @@ interface RecordCardProps {
   onToggleFlag: (item: VinylRecord) => ActionResult
   onChangeStatus: (item: VinylRecord, status: "owned" | "wishlist") => ActionResult
   onDelete: (item: VinylRecord) => ActionResult
+  showColumns?: boolean
+  onEdit?: (item: VinylRecord) => void
 }
 
 export default function RecordCard({
-  item, isSelected, actionsOpen, onActionsOpenChange, onSelect, onToggleFlag, onChangeStatus, onDelete,
+  item, isSelected, actionsOpen, onActionsOpenChange, onSelect, onToggleFlag, onChangeStatus, onDelete, showColumns = false, onEdit,
 }: RecordCardProps) {
+  const [hovered, setHovered] = useState(false)
   const busyRef = useRef(false)
   const gestureRef = useRef<{ id: number; x: number; y: number; horizontal: boolean } | null>(null)
   const suppressClickRef = useRef(false)
@@ -101,31 +106,52 @@ export default function RecordCard({
         suppressClickRef.current = true
       }}
       style={{
-        background: colors.card, borderRadius: "16px", width: "100%", boxSizing: "border-box",
-        border: isSelected ? `2px solid ${colors.accent}` : "2px solid transparent",
+        background: isSelected ? colors.accentBg : hovered && !actionsOpen ? colors.card : "transparent",
+        borderRadius: "10px", width: "100%", boxSizing: "border-box",
+        boxShadow: `inset 0 -1px 0 ${colors.border}`,
         touchAction: "pan-y", overflow: "hidden", flexShrink: 0,
       }}
+      onPointerEnter={(event) => { if (event.pointerType === "mouse") setHovered(true) }}
+      onPointerLeave={() => setHovered(false)}
     >
-      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "4px", padding: actionsOpen ? "12px" : "12px 44px 12px 12px" }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "4px", padding: actionsOpen ? "10px 12px" : `10px ${LIST_ROW_PADDING_RIGHT}px 10px ${LIST_ROW_PADDING_LEFT}px` }}>
         <button
           type="button"
           onClick={() => {
             onActionsOpenChange(false)
             onSelect(item)
           }}
-          style={{ display: "flex", alignItems: "center", gap: "14px", flex: 1, minWidth: 0, border: "none", padding: 0, textAlign: "left", background: "transparent", cursor: "pointer", color: colors.textPrimary }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: showColumns ? LIST_COLUMNS : `${LIST_COVER_SIZE}px minmax(0, 1fr)`,
+            columnGap: `${LIST_COLUMN_GAP}px`,
+            alignItems: "center",
+            flex: 1, minWidth: 0, border: "none", padding: 0, textAlign: "left", background: "transparent", cursor: "pointer", color: colors.textPrimary,
+          }}
         >
-          <span style={{ width: "48px", height: "48px", borderRadius: "8px", background: colors.cover, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {item.cover_url
-              ? <img src={item.cover_url} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <span style={{ width: `${LIST_COVER_SIZE}px`, height: `${LIST_COVER_SIZE}px`, borderRadius: "8px", background: colors.cover, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {getDisplayCover(item)
+              ? <img src={getDisplayCover(item)} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               : <span aria-hidden="true" style={{ fontSize: "20px" }}>♪</span>}
           </span>
           <span style={{ minWidth: 0 }}>
-            <span style={{ display: "block", fontSize: "22px", fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.artist}</span>
-            <span style={{ display: "block", color: colors.textSecondary, marginTop: "8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {[item.album, item.year, item.genre].filter(Boolean).join(" • ")}
+            <span style={{ display: "block", fontSize: "16px", fontWeight: "bold", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.album}</span>
+            <span style={{ display: "block", color: colors.textSecondary, fontSize: "13px", marginTop: "3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {(showColumns ? [item.artist] : [item.artist, item.year]).filter(Boolean).join(" • ")}
             </span>
           </span>
+          {showColumns && (
+            <>
+              <span style={{ color: colors.textSecondary, fontSize: "14px" }}>{item.year}</span>
+              <span style={{ minWidth: 0 }}>
+                {item.genre && (
+                  <span style={{ display: "inline-block", maxWidth: "100%", boxSizing: "border-box", background: colors.card, color: colors.textMuted, borderRadius: "20px", padding: "3px 10px", fontSize: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "middle" }}>
+                    {item.genre}
+                  </span>
+                )}
+              </span>
+            </>
+          )}
         </button>
         <div id={`record-actions-${item.id}`} hidden={!actionsOpen} style={{ flexShrink: 0 }}>
           <div role="group" aria-label={`Actions for ${item.album}`} style={{ display: "flex", gap: "2px", flexWrap: "nowrap", background: colors.bgSecondary, borderRadius: "10px", border: `1px solid ${colors.borderStrong}` }}>
@@ -137,6 +163,11 @@ export default function RecordCard({
             <button type="button" aria-label={favoriteLabel} title={favoriteLabel} aria-pressed={item.favorite} disabled={busy} style={{ ...actionStyle, color: item.favorite ? colors.favorite : colors.textSecondary }} onClick={() => { void runAction(() => onToggleFlag(item)) }}>
               <Star size={22} fill={item.favorite ? "currentColor" : "none"} aria-hidden="true" />
             </button>
+            {onEdit && (
+              <button type="button" aria-label="Edit cover" title="Edit cover" disabled={busy} style={{ ...actionStyle, color: colors.textSecondary }} onClick={() => { onActionsOpenChange(false); onEdit(item) }}>
+                <Pencil size={22} aria-hidden="true" />
+              </button>
+            )}
             <button
               type="button"
               aria-label="Delete vinyl"

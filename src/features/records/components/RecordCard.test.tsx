@@ -79,7 +79,7 @@ describe("RecordCard actions", () => {
   it("places the compact menu in the row padding and keeps native vertical scrolling", () => {
     const html = renderCard(record, false)
     expect(html).toContain("touch-action:pan-y")
-    expect(html).toContain("padding:12px 44px 12px 12px")
+    expect(html).toContain("padding:10px 44px 10px 12px")
     expect(html).toContain("position:absolute;right:0")
     expect(html).toContain('width="18"')
   })
@@ -89,7 +89,36 @@ describe("RecordCard actions", () => {
     const menu = html.match(/<button[^>]*aria-expanded="true"[^>]*>/)?.[0]
     expect(menu).toContain("display:none")
     expect(html).toContain("background:#E8DCC8")
-    expect(html).toContain("padding:12px")
-    expect(html).not.toContain("padding:12px 44px 12px 12px")
+    expect(html).toContain("padding:10px 12px")
+    expect(html).not.toContain("padding:10px 44px 10px 12px")
+  })
+
+  it("offers cover editing from the actions menu when supported", () => {
+    const html = renderToStaticMarkup(
+      <RecordCard item={record} isSelected={false} actionsOpen onEdit={() => {}}
+        onActionsOpenChange={() => {}} onSelect={() => {}} onToggleFlag={() => true}
+        onChangeStatus={() => true} onDelete={() => true} />
+    )
+    expect(html).toContain('aria-label="Edit cover"')
+    expect(renderCard(record)).not.toContain('aria-label="Edit cover"')
+  })
+
+  it("shows the album as the title with the artist below", () => {
+    const html = renderCard(record)
+    expect(html.indexOf("Cross")).toBeLessThan(html.indexOf("Justice"))
+  })
+
+  it("adds year and genre columns only when columns are enabled", () => {
+    const compact = renderCard(record).replace(/<[^>]*>/g, " ")
+    expect(compact).toContain("Justice • 2007")
+    expect(compact).not.toContain("Electronic")
+
+    const wide = renderToStaticMarkup(
+      <RecordCard item={record} isSelected={false} actionsOpen={false} showColumns
+        onActionsOpenChange={() => {}} onSelect={() => {}} onToggleFlag={() => true}
+        onChangeStatus={() => true} onDelete={() => true} />
+    )
+    expect(wide).toContain("Electronic")
+    expect(wide).toContain("2007")
   })
 })

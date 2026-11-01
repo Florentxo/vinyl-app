@@ -6,6 +6,7 @@ interface AuthStore {
   user: User | null
   loading: boolean
   fetchUser: () => Promise<void>
+  setUser: (user: User | null) => void
   signUp: (email: string, password: string) => Promise<string | null>
   signIn: (email: string, password: string) => Promise<string | null>
   signOut: () => Promise<void>
@@ -19,6 +20,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
     const { data } = await supabase.auth.getSession()
     set({ user: data.session?.user ?? null, loading: false })
   },
+
+  setUser: (user) => set({ user }),
 
   signUp: async (email, password) => {
     const { error } = await supabase.auth.signUp({ email, password })

@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react"
+import { Pencil } from "lucide-react"
 import { useRecordsStore } from "../../features/records/store/recordsStore"
 import TracklistSection from "../../features/records/components/TracklistSection"
+import RecordPhotosDialog from "../../features/records/components/RecordPhotosDialog"
+import { getDisplayCover } from "../../features/records/utils/photos"
 import { colors } from "../../theme"
 
 interface DetailsPanelProps {
@@ -14,6 +17,7 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
 
   const [genre, setGenre] = useState("")
   const [style, setStyle] = useState("")
+  const [photosOpen, setPhotosOpen] = useState(false)
   const updateGenreStyle = useCallback((g: string, s: string) => { setGenre(g); setStyle(s) }, [])
 
   if (!selectedRecord) return null
@@ -60,6 +64,7 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
 
         {/* COVER */}
         <div style={{
+          position: "relative",
           borderRadius: "12px",
           overflow: "hidden",
           aspectRatio: "1",
@@ -69,9 +74,9 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
           justifyContent: "center",
           flexShrink: 0,
         }}>
-          {selectedRecord.cover_url ? (
+          {getDisplayCover(selectedRecord) ? (
             <img
-              src={selectedRecord.cover_url}
+              src={getDisplayCover(selectedRecord)}
               alt={selectedRecord.album}
               loading="lazy"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
@@ -79,7 +84,16 @@ export default function DetailsPanel({ onClose }: DetailsPanelProps) {
           ) : (
             <span style={{ fontSize: "48px" }}>🎵</span>
           )}
+          <button
+            type="button"
+            onClick={() => setPhotosOpen(true)}
+            aria-label="Edit cover"
+            style={{ position: "absolute", right: "8px", bottom: "8px",             width: "40px", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", cursor: "pointer" }}
+          >
+                        <Pencil size={18} aria-hidden="true" />
+          </button>
         </div>
+        {photosOpen && <RecordPhotosDialog key={selectedRecord.id} record={selectedRecord} onClose={() => setPhotosOpen(false)} />}
 
         {/* INFO */}
         <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>{selectedRecord.artist}</h2>

@@ -1,6 +1,8 @@
 import { create } from "zustand"
 import { supabase } from "../../../services/supabase"
-import type { VinylRecord } from "../types/record"
+import type { RecordPhoto, VinylRecord } from "../types/record"
+import { deleteAllRecordPhotos, signPaths } from "../services/recordPhotos"
+import { newId } from "../utils/id"
 
 interface RecordsStore {
   records: VinylRecord[]
@@ -16,6 +18,7 @@ interface RecordsStore {
   toggleFavorite: (id: string) => Promise<boolean>
   changeStatus: (id: string, status: "owned" | "wishlist") => Promise<boolean>
   moveToCollection: (id: string) => Promise<boolean>
+  setCustomCover: (id: string, photo: RecordPhoto | null) => Promise<boolean>
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -48,7 +51,15 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
         .select("*")
         .eq("user_id", userId)
       if (error) throw error
-      set({ records: (data ?? []) as VinylRecord[] })
+      const records = (data ?? []) as VinylRecord[]
+      const coverPaths = records.flatMap((r) => r.cover_source === "custom" && r.custom_cover_path ? [r.custom_cover_path] : [])
+      // A failure to sign covers must not hide the collection; it falls back to Discogs covers.
+      const urls = await signPaths(coverPaths).catch(() => ({} as Record<string, string>))
+      set({
+        records: records.map((r) =>
+          r.custom_cover_path && urls[r.custom_cover_path] ? { ...r, custom_cover_url: urls[r.custom_cover_path] } : r
+        ),
+      })
       return true
     } catch (error) {
       set({ error: getErrorMessage(error, "Could not load your records.") })
@@ -76,7 +87,7 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
     set({ error: null })
     try {
       const user_id = await getCurrentUserId()
-      const recordWithUser = { ...record, id: crypto.randomUUID(), user_id }
+      const recordWithUser = { ...record, id: newId(), user_id }
       const { error } = await supabase.from("records").insert(recordWithUser)
       if (error) throw error
       set((state) => ({ records: [...state.records, recordWithUser] }))
@@ -91,6 +102,7 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
     set({ error: null })
     try {
       const userId = await getCurrentUserId()
+      await deleteAllRecordPhotos(id)
       const { error } = await supabase
         .from("records")
         .delete()
@@ -153,4 +165,30 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
   },
 
   moveToCollection: (id) => get().changeStatus(id, "owned"),
+
+  setCustomCover: async (id, photo) => {
+    set({ error: null })
+    try {
+      const userId = await getCurrentUserId()
+      const changes = photo
+        ? { cover_source: "custom" as const, custom_cover_path: photo.path }
+        : { cover_source: "discogs" as const, custom_cover_path: null }
+      const { error } = await supabase
+        .from("records")
+        .update(changes)
+        .eq("id", id)
+        .eq("user_id", userId)
+      if (error) throw error
+      const apply = (record: VinylRecord): VinylRecord =>
+        record.id === id ? { ...record, ...changes, custom_cover_url: photo?.url } : record
+      set((state) => ({
+        records: state.records.map(apply),
+        selectedRecord: state.selectedRecord ? apply(state.selectedRecord) : null,
+      }))
+      return true
+    } catch (error) {
+      set({ error: getErrorMessage(error, "Could not update the cover.") })
+      return false
+    }
+  },
 }))

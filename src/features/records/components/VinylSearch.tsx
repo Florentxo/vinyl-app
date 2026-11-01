@@ -1,10 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { Check, Plus } from "lucide-react"
 import type { VinylRecord } from "../types/record"
 import { colors } from "../../../theme"
-import ReleasePreview from "./ReleasePreview"
 import {
   buildDiscogsArtistSearchUrl,
   buildDiscogsSearchUrl,
+  fetchDiscogsReleaseDetails,
   mapDiscogsRelease,
   matchesDiscogsArtist,
 } from "../utils/discogs"
@@ -35,7 +36,6 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   const [loadingMore, setLoadingMore] = useState(false)
   const [nextPage, setNextPage] = useState<number | null>(null)
   const [addingId, setAddingId] = useState<number | null>(null)
-  const [previewRelease, setPreviewRelease] = useState<Release | null>(null)
   const [addError, setAddError] = useState("")
   const [error, setError] = useState("")
 
@@ -218,6 +218,18 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
     }
   }
 
+  async function addRelease(release: Release) {
+    setAddingId(release.id)
+    setAddError("")
+    let details: DiscogsReleaseDetails | null = null
+    try {
+      details = await fetchDiscogsReleaseDetails(release.id, DISCOGS_TOKEN)
+    } catch {
+      // Genre and cover fall back to the search result when details are unavailable.
+    }
+    await selectRelease(release, details)
+  }
+
   async function selectRelease(release: Release, details: DiscogsReleaseDetails | null) {
     setAddingId(release.id)
     setAddError("")
@@ -236,7 +248,6 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
         cover_url: coverUrl,
       })
       if (added === false) throw new Error("Could not add this release")
-      setPreviewRelease(null)
       setArtistQuery("")
       setSelectedArtist(null)
       setAlbumQuery("")
@@ -254,7 +265,7 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
   const canSearch = artistQuery.trim().length >= 2 || albumQuery.trim().length >= 2
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: 0, flex: 1 }}>
       <div ref={artistFieldRef} style={{ position: "relative" }}>
         <label style={fieldStyle}>
           <span>Artist</span>
@@ -335,19 +346,10 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
       {releases.length > 0 && (
         <div
           aria-label="Search results"
-          style={{ ...resultsStyle, maxHeight: isMobile ? "calc(100dvh - 390px)" : "260px" }}
+          style={{ ...resultsStyle, flex: "1 1 0", minHeight: "140px" }}
         >
-          {releases.map((release) => (
-            <button
-              key={release.id}
-              type="button"
-              disabled={addingId !== null}
-              onClick={() => {
-                setAddError("")
-                setPreviewRelease(release)
-              }}
-              style={{ ...releaseItemStyle, opacity: addingId === release.id ? 0.6 : 1 }}
-            >
+          {releases.map((release, index) => (
+            <div key={release.id} style={{ ...releaseItemStyle, borderColor: index === 0 ? colors.accent : colors.border }}>
               {release.coverUrl ? (
                 <img src={release.coverUrl} alt="" style={coverStyle} />
               ) : (
@@ -360,26 +362,26 @@ export default function VinylSearch({ onAdd, isMobile = false }: VinylSearchProp
                   {[release.year, ...release.formats].filter(Boolean).join(" · ")}
                 </span>
               </span>
-              {addingId === release.id && <span style={messageStyle}>Adding...</span>}
-            </button>
+              {index === 0 && <Check size={18} color={colors.accent} aria-label="Best match" role="img" style={{ flexShrink: 0 }} />}
+              <button
+                type="button"
+                aria-label={`Add ${release.album} by ${release.artist}`}
+                title="Add to my records"
+                disabled={addingId !== null}
+                onClick={() => { void addRelease(release) }}
+                style={addButtonStyle}
+              >
+                {addingId === release.id ? "…" : <Plus size={18} aria-hidden="true" />}
+              </button>
+            </div>
           ))}
         </div>
       )}
+      {addError && <p role="alert" style={errorStyle}>{addError}</p>}
       {nextPage !== null && (
         <button type="button" onClick={loadMore} disabled={loadingMore} style={loadMoreStyle}>
           {loadingMore ? "Loading more..." : "Load more releases"}
         </button>
-      )}
-      {previewRelease && (
-        <ReleasePreview
-          key={previewRelease.id}
-          release={previewRelease}
-          isMobile={isMobile}
-          adding={addingId !== null}
-          error={addError}
-          onClose={() => setPreviewRelease(null)}
-          onConfirm={(details) => { void selectRelease(previewRelease, details) }}
-        />
       )}
     </div>
   )
@@ -427,6 +429,7 @@ const resultsStyle = {
 
 const releaseItemStyle = {
   width: "100%",
+  boxSizing: "border-box" as const,
   display: "flex",
   alignItems: "center",
   gap: "10px",
@@ -435,6 +438,19 @@ const releaseItemStyle = {
   background: colors.card,
   border: `1px solid ${colors.border}`,
   borderRadius: "8px",
+}
+
+const addButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+  width: "36px",
+  height: "36px",
+  border: "none",
+  borderRadius: "50%",
+  background: colors.accent,
+  color: "#fff",
   cursor: "pointer",
 }
 

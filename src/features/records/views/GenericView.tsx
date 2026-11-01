@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowDownWideNarrow, ListFilter } from "lucide-react"
+import { ArrowDownWideNarrow, ChevronDown, ChevronUp, LayoutGrid, List, ListFilter, Pencil, Plus } from "lucide-react"
 
 import VinylSearch from "../components/VinylSearch"
 import RecordCard from "../components/RecordCard"
+import RecordGridCard from "../components/RecordGridCard"
 import SearchBar from "../components/SearchBar"
 import TracklistSection from "../components/TracklistSection"
+import RecordPhotosDialog from "../components/RecordPhotosDialog"
+import { getDisplayCover } from "../utils/photos"
+import { LIST_COLUMN_GAP, LIST_COLUMNS, LIST_ROW_PADDING_LEFT, LIST_ROW_PADDING_RIGHT } from "../utils/listLayout"
 
 import { useRecordsStore } from "../store/recordsStore"
 import { useIsMobile } from "../../../shared/hooks/useIsMobile"
@@ -17,6 +21,17 @@ interface GenericViewProps {
 }
 
 type SortOrder = "artist" | "artist-desc" | "album" | "album-desc" | "genre" | "genre-desc" | "year-newest" | "year-oldest"
+type ViewMode = "list" | "grid"
+
+const VIEW_MODE_KEY = "vinyl-view-mode"
+
+function readViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === "grid" ? "grid" : "list"
+  } catch {
+    return "list"
+  }
+}
 
 const sortOptions: { value: SortOrder; label: string }[] = [
   { value: "artist", label: "Artist A-Z" },
@@ -35,6 +50,8 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const [sortOrder, setSortOrder] = useState<SortOrder>("artist")
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>(readViewMode)
   const [openActionsId, setOpenActionsId] = useState<string | null>(null)
   const [mobileGenre, setMobileGenre] = useState("")
   const [mobileStyle, setMobileStyle] = useState("")
@@ -110,6 +127,11 @@ export default function GenericView({ title, type }: GenericViewProps) {
     setSelectedRecord(item)
   }
 
+  function changeViewMode(mode: ViewMode) {
+    setViewMode(mode)
+    try { localStorage.setItem(VIEW_MODE_KEY, mode) } catch { /* storage unavailable */ }
+  }
+
   async function deleteItem() {
     if (!selectedRecord) return
     if (!window.confirm(`Delete "${selectedRecord.album}" from your records?`)) return
@@ -140,6 +162,8 @@ export default function GenericView({ title, type }: GenericViewProps) {
       status: type === "wishlist" ? "wishlist" : "owned",
     })
   }
+
+  const editRecord = records.find((record) => record.id === editId) ?? null
 
   const filteredItems = records
     .filter((item) => {
@@ -181,7 +205,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
     })
 
   const sortControl = (
-    <div ref={sortControlRef} style={sortControlStyle}>
+    <div ref={sortControlRef} style={isMobile ? sortControlStyle : { ...sortControlStyle, flex: "0 0 130px" }}>
       <div style={sortMenuContainerStyle}>
         <button
           ref={sortTriggerRef}
@@ -262,18 +286,53 @@ export default function GenericView({ title, type }: GenericViewProps) {
   )
 
   const filterSearch = filterOpen && (
-    <div ref={filterSearchRef} id="record-filter" style={filterInputStyle}>
+    <div ref={filterSearchRef} id="record-filter" style={isMobile ? filterInputStyle : { ...filterInputStyle, right: "auto", width: "300px" }}>
       <SearchBar compact value={search} onChange={setSearch} />
+    </div>
+  )
+
+  function columnHeader(label: string, ascending: SortOrder, descending: SortOrder) {
+    const active = sortOrder === ascending || sortOrder === descending
+    const Arrow = sortOrder === descending ? ChevronDown : ChevronUp
+    return (
+      <button
+        key={label}
+        type="button"
+        onClick={() => setSortOrder(sortOrder === ascending ? descending : ascending)}
+        aria-label={`Sort by ${label}`}
+        style={{ ...columnHeaderButtonStyle, color: active ? colors.accent : colors.textSecondary }}
+      >
+        {label}
+        {active && <Arrow aria-hidden="true" size={14} />}
+      </button>
+    )
+  }
+
+  const viewToggle = (
+    <div role="group" aria-label="Display mode" style={isMobile ? viewToggleStyle : { ...viewToggleStyle, marginLeft: "auto" }}>
+      {([["list", List, "List view"], ["grid", LayoutGrid, "Grid view"]] as const).map(([mode, Icon, label]) => (
+        <button
+          key={mode}
+          type="button"
+          aria-label={label}
+          aria-pressed={viewMode === mode}
+          onClick={() => changeViewMode(mode)}
+          style={{ ...viewToggleButtonStyle, background: viewMode === mode ? colors.accentBg : "transparent", color: viewMode === mode ? colors.accent : colors.textMuted }}
+        >
+          <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+        </button>
+      ))}
     </div>
   )
 
   const filterToolbar = (
     <div style={toolbarStyle}>
-      <div style={filterControlStyle}>
+      <div style={isMobile ? filterControlStyle : { ...filterControlStyle, flex: "0 0 130px" }}>
         {filterToggle}
         {filterSearch}
       </div>
       {sortControl}
+      {viewToggle}
     </div>
   )
 
@@ -298,23 +357,14 @@ export default function GenericView({ title, type }: GenericViewProps) {
           <span style={{ color: colors.textSecondary, fontSize: "16px" }}>
             {filteredItems.length} vinyl{filteredItems.length !== 1 ? "s" : ""}
           </span>
+          {type !== "favorites" && !isMobile && (
+            <button type="button" onClick={(event) => { event.stopPropagation(); setModalOpen(true) }} style={addButtonStyle}>
+              <Plus aria-hidden="true" size={16} /> Add a vinyl
+            </button>
+          )}
         </div>
 
-        {isMobile ? (
-          filterToolbar
-        ) : (
-          <div style={desktopHeaderColumnsStyle}>
-            <div style={desktopHeaderColumnStyle}>
-              {filterToolbar}
-            </div>
-            {type !== "favorites" && (
-              <div style={desktopHeaderColumnStyle}>
-                <p style={labelStyle}>ADD A VINYL</p>
-                <VinylSearch onAdd={addOrMove} />
-              </div>
-            )}
-          </div>
-        )}
+        {filterToolbar}
 
       </div>
 
@@ -326,15 +376,38 @@ export default function GenericView({ title, type }: GenericViewProps) {
       )}
 
       {/* SCROLLABLE RECORDS LIST */}
-      <div style={{ ...cardsContainerStyle, paddingBottom: isMobile ? "80px" : "0", overflowY: "auto", flex: 1 }}>
-        {recordsLoading && <p style={emptyStateStyle}>Loading your records...</p>}
-        {!recordsLoading && filteredItems.length === 0 && !recordsError && (
-          <p style={emptyStateStyle}>No records found.</p>
+      <div style={{ ...(viewMode === "grid" ? gridContainerStyle : cardsContainerStyle), paddingBottom: isMobile ? "80px" : "0", overflowY: "auto", flex: 1, alignContent: "start", ...(viewMode === "list" ? { maxWidth: "1100px" } : {}) }}>
+        {viewMode === "list" && !isMobile && filteredItems.length > 0 && (
+          <div role="row" style={listHeaderStyle}>
+            <span />
+            <span style={{ display: "flex", gap: "14px" }}>
+              {columnHeader("Album", "album", "album-desc")}
+              {columnHeader("Artist", "artist", "artist-desc")}
+            </span>
+            {columnHeader("Year", "year-newest", "year-oldest")}
+            {columnHeader("Genre", "genre", "genre-desc")}
+          </div>
         )}
-        {filteredItems.map((item) => (
+        {recordsLoading && <p style={{ ...emptyStateStyle, gridColumn: "1 / -1" }}>Loading your records...</p>}
+        {!recordsLoading && filteredItems.length === 0 && !recordsError && (
+          <p style={{ ...emptyStateStyle, gridColumn: "1 / -1" }}>No records found.</p>
+        )}
+        {filteredItems.map((item) => viewMode === "grid" ? (
+          <RecordGridCard
+            key={item.id}
+            item={item}
+            isSelected={selectedRecord?.id === item.id}
+            onSelect={selectItem}
+            onToggleFlag={() => toggleFavorite(item.id)}
+            onMoveToCollection={() => changeStatus(item.id, "owned")}
+            onEdit={(record) => setEditId(record.id)}
+          />
+        ) : (
           <RecordCard
             key={item.id}
             item={item}
+            showColumns={!isMobile}
+            onEdit={(record) => setEditId(record.id)}
             actionsOpen={openActionsId === item.id}
             onActionsOpenChange={(open) => setOpenActionsId(open ? item.id : null)}
             isSelected={selectedRecord?.id === item.id}
@@ -364,13 +437,19 @@ export default function GenericView({ title, type }: GenericViewProps) {
                 <>
                   {/* HEADER */}
                   <div style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
-                    {selectedRecord.cover_url && (
-                      <img
-                        src={selectedRecord.cover_url}
-                        alt={selectedRecord.album}
-                        style={{ width: "72px", height: "72px", borderRadius: "8px", objectFit: "cover", flexShrink: 0 }}
-                      />
-                    )}
+                    <div style={{ position: "relative", width: "88px", height: "88px", flexShrink: 0, borderRadius: "8px", overflow: "hidden", background: colors.card, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {getDisplayCover(selectedRecord)
+                        ? <img src={getDisplayCover(selectedRecord)} alt={selectedRecord.album} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <span style={{ fontSize: "28px" }}>🎵</span>}
+                      <button
+                        type="button"
+                        onClick={() => setEditId(selectedRecord.id)}
+                        aria-label="Edit cover"
+                        style={{ position: "absolute", right: "4px", bottom: "4px",                         width: "34px", height: "34px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", cursor: "pointer", padding: 0 }}
+                      >
+                                                <Pencil size={16} aria-hidden="true" />
+                      </button>
+                    </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>{selectedRecord.artist}</h2>
@@ -422,22 +501,37 @@ export default function GenericView({ title, type }: GenericViewProps) {
         </div>
       )}
 
-      {/* ADD VINYL MODAL — mobile only */}
+      {editRecord && (
+        <RecordPhotosDialog key={editRecord.id} record={editRecord} onClose={() => setEditId(null)} />
+      )}
+
+      {/* ADD VINYL MODAL — fullscreen on mobile, centered on desktop */}
       {modalOpen && (
-        <div style={addModalStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-            <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>Add a vinyl</h2>
-            <button onClick={() => setModalOpen(false)} style={closeButtonStyle}>✕</button>
-          </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-            <VinylSearch
-              isMobile={true}
-              onAdd={async (record) => {
-                const added = await addOrMove(record)
-                if (added) setModalOpen(false)
-                return added
-              }}
-            />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Add a vinyl"
+          style={isMobile ? addModalStyle : addDialogOverlayStyle}
+          onClick={(event) => { event.stopPropagation(); if (!isMobile) setModalOpen(false) }}
+        >
+          <div
+            style={isMobile ? { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 } : addDialogStyle}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <h2 style={{ color: colors.textPrimary, margin: 0, fontSize: "18px" }}>Add a vinyl</h2>
+              <button onClick={() => setModalOpen(false)} aria-label="Close" style={closeButtonStyle}>✕</button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
+              <VinylSearch
+                isMobile={isMobile}
+                onAdd={async (record) => {
+                  const added = await addOrMove(record)
+                  if (added) setModalOpen(false)
+                  return added
+                }}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -467,26 +561,8 @@ const titleStyle = {
   margin: 0,
 }
 
-const labelStyle = {
-  color: colors.textSecondary,
-  fontSize: "12px",
-  margin: "0 0 6px 0",
-  letterSpacing: "0.5px",
-}
-
 const sortControlStyle = {
   display: "flex",
-  flex: 1,
-  minWidth: 0,
-}
-
-const desktopHeaderColumnsStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "16px",
-}
-
-const desktopHeaderColumnStyle = {
   flex: 1,
   minWidth: 0,
 }
@@ -591,7 +667,97 @@ const sortOptionStyle = {
 const cardsContainerStyle = {
   display: "flex",
   flexDirection: "column" as const,
-  gap: "14px",
+  gap: "0",
+}
+
+const listHeaderStyle = {
+  position: "sticky" as const,
+  top: 0,
+  zIndex: 5,
+  display: "grid",
+  gridTemplateColumns: LIST_COLUMNS,
+  columnGap: `${LIST_COLUMN_GAP}px`,
+  alignItems: "center",
+  padding: `6px ${LIST_ROW_PADDING_RIGHT}px 6px ${LIST_ROW_PADDING_LEFT}px`,
+  background: colors.bg,
+  borderBottom: `1px solid ${colors.borderStrong}`,
+  flexShrink: 0,
+}
+
+const columnHeaderButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "3px",
+  padding: "4px 0",
+  border: "none",
+  background: "transparent",
+  fontSize: "12px",
+  letterSpacing: "0.5px",
+  textTransform: "uppercase" as const,
+  cursor: "pointer",
+  justifySelf: "start",
+}
+
+const gridContainerStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+  gap: "18px 14px",
+}
+
+const viewToggleStyle = {
+  display: "flex",
+  flexShrink: 0,
+  gap: "2px",
+}
+
+const viewToggleButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "38px",
+  height: "38px",
+  border: "none",
+  borderRadius: "8px",
+  cursor: "pointer",
+}
+
+const addButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  marginLeft: "auto",
+  alignSelf: "center",
+  padding: "9px 16px",
+  border: "none",
+  borderRadius: "20px",
+  background: colors.accent,
+  color: "#fff",
+  fontSize: "14px",
+  cursor: "pointer",
+}
+
+const addDialogOverlayStyle = {
+  position: "fixed" as const,
+  inset: 0,
+  background: "rgba(58,46,34,0.45)",
+  zIndex: 200,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "24px",
+}
+
+const addDialogStyle = {
+  background: colors.bg,
+  borderRadius: "16px",
+  width: "100%",
+  maxWidth: "640px",
+  height: "min(85vh, 760px)",
+  padding: "24px",
+  boxSizing: "border-box" as const,
+  display: "flex",
+  flexDirection: "column" as const,
+  overflow: "hidden",
 }
 
 const fabStyle = {

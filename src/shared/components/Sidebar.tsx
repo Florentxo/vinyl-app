@@ -1,5 +1,10 @@
+import { useEffect, useState } from "react"
 import { useNavigate, NavLink } from "react-router-dom"
+import { Pencil } from "lucide-react"
 import { useAuthStore } from "../../features/auth/store/authStore"
+import { getAppLogoPath } from "../../features/auth/services/appLogo"
+import { signPaths } from "../../features/records/services/recordPhotos"
+import AppLogoDialog from "./AppLogoDialog"
 import { useIsMobile } from "../hooks/useIsMobile"
 import { colors } from "../../theme"
 
@@ -12,7 +17,22 @@ const menus = [
 export default function Sidebar() {
   const isMobile = useIsMobile()
   const signOut = useAuthStore((state) => state.signOut)
+  const user = useAuthStore((state) => state.user)
   const navigate = useNavigate()
+  const [logoDialogOpen, setLogoDialogOpen] = useState(false)
+  const [signed, setSigned] = useState<{ path: string; url: string } | null>(null)
+  const logoPath = getAppLogoPath(user)
+  const logoUrl = signed && signed.path === logoPath ? signed.url : null
+
+  useEffect(() => {
+    if (!logoPath) return
+    let cancelled = false
+    // On failure the original logo stays visible.
+    signPaths([logoPath])
+      .then((urls) => { if (!cancelled && urls[logoPath]) setSigned({ path: logoPath, url: urls[logoPath] }) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [logoPath])
 
   async function handleSignOut() {
     await signOut()
@@ -94,17 +114,23 @@ export default function Sidebar() {
       gap: "8px",
       flexShrink: 0,
     }}>
-      <img
-        src="/icon-192x192.png"
-        alt="Vinyl Collec'"
-        style={{
-          width: "48px",
-          height: "48px",
-          borderRadius: "10px",
-          display: "block",
-          margin: "0 auto 24px auto",
-        }}
-      />
+      <div style={{ position: "relative", width: "56px", height: "56px", margin: "0 auto 24px auto", flexShrink: 0 }}>
+        <img
+          src={logoUrl ?? "/icon-192x192.png"}
+          alt="Vinyl Collec'"
+          style={{ width: "56px", height: "56px", borderRadius: "12px", display: "block", objectFit: "cover" }}
+        />
+        <button
+          type="button"
+          onClick={() => setLogoDialogOpen(true)}
+          aria-label="Edit logo"
+          title="Edit logo"
+          style={{ position: "absolute",                     right: "-2px", bottom: "-2px", width: "16px", height: "16px", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.65)", color: "#fff", border: "none", borderRadius: "50%", cursor: "pointer", padding: 0 }}
+        >
+                    <Pencil size={9} aria-hidden="true" />
+        </button>
+      </div>
+      {logoDialogOpen && <AppLogoDialog logoUrl={logoUrl} onClose={() => setLogoDialogOpen(false)} />}
 
       {menus.map((menu) => (
         <NavLink
