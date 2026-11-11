@@ -6,13 +6,17 @@ interface SearchBarProps {
   onChange: (value: string) => void
   placeholder?: string
   compact?: boolean
+  autoFocus?: boolean
+  onEscape?: () => void
 }
 
 export default function SearchBar({
   value,
   onChange,
-  placeholder = "Filter list by artist or album...",
+  placeholder = "Search by artist or album...",
   compact = false,
+  autoFocus = false,
+  onEscape,
 }: SearchBarProps) {
   function handleChange(
     e: ChangeEvent<HTMLInputElement>
@@ -22,10 +26,18 @@ export default function SearchBar({
 
   return (
     <input
-      type="text"
+      type="search"
+      aria-label="Search in collection"
+      enterKeyHint="search"
+      autoComplete="off"
+      autoFocus={autoFocus}
       placeholder={placeholder}
       value={value}
       onChange={handleChange}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onEscape?.()
+        else if (e.key === "Enter") e.currentTarget.blur()
+      }}
       style={{ ...searchStyle, ...(compact ? compactSearchStyle : {}) }}
     />
   )

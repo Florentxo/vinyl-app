@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { ArrowDownWideNarrow, ChevronDown, ChevronUp, LayoutGrid, List, ListFilter, Pencil, Plus, ScanLine } from "lucide-react"
+import { ArrowDownWideNarrow, ChevronDown, ChevronUp, LayoutGrid, List, ListFilter, Pencil, Plus, ScanLine, Search } from "lucide-react"
 
 import VinylSearch from "../components/VinylSearch"
 import RecordCard from "../components/RecordCard"
@@ -27,6 +27,11 @@ type ViewMode = "list" | "grid"
 
 const VIEW_MODE_KEY = "vinyl-view-mode"
 
+// Stored as "Genre / Style"; each part is an independent filter value.
+function genreTokens(genre: string) {
+  return genre.split(" / ").map((part) => part.trim()).filter(Boolean)
+}
+
 function readViewMode(): ViewMode {
   try {
     return localStorage.getItem(VIEW_MODE_KEY) === "grid" ? "grid" : "list"
@@ -48,10 +53,18 @@ const sortOptions: { value: SortOrder; label: string }[] = [
 
 export default function GenericView({ title, type }: GenericViewProps) {
   const [search, setSearch] = useState("")
+  const [searchOpen, setSearchOpen] = useState(false)
   const [filterOpen, setFilterOpen] = useState(false)
+  const [yearExact, setYearExact] = useState("")
+  const [yearFrom, setYearFrom] = useState("")
+  const [yearTo, setYearTo] = useState("")
+  const [genreFilter, setGenreFilter] = useState<string[]>([])
   const [sortOrder, setSortOrder] = useState<SortOrder>("artist")
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [sheetDragY, setSheetDragY] = useState(0)
+  const [sheetDragging, setSheetDragging] = useState(false)
+  const sheetTouchStartY = useRef<number | null>(null)
   const [scanOpen, setScanOpen] = useState(false)
   const [prefill, setPrefill] = useState<{ artist: string; album: string; alternates?: { artist: string; album: string } } | null>(null)
 
@@ -175,12 +188,46 @@ export default function GenericView({ title, type }: GenericViewProps) {
   const editRecord = records.find((record) => record.id === editId) ?? null
   const sortKeyOf = useSortKey(records.flatMap((record) => [record.artist, record.album]))
 
+  const yearFilterActive = Boolean(yearExact || yearFrom || yearTo)
+  const anyFilterActive = yearFilterActive || genreFilter.length > 0
+  const genreOptions = [...new Set(records.flatMap((record) => genreTokens(record.genre)))]
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+  const decades = [...new Set(
+    records
+      .map((record) => Number.parseInt(record.year, 10))
+      .filter((year) => Number.isFinite(year) && year >= 1000)
+      .map((year) => Math.floor(year / 10) * 10),
+  )].sort((a, b) => a - b)
+
+  function matchesYear(item: VinylRecord) {
+    if (!yearFilterActive) return true
+    const year = Number.parseInt(item.year, 10)
+    if (!Number.isFinite(year)) return false
+    if (yearExact) return year === Number(yearExact)
+    let from = yearFrom ? Number(yearFrom) : -Infinity
+    let to = yearTo ? Number(yearTo) : Infinity
+    if (from > to) [from, to] = [to, from]
+    return year >= from && year <= to
+  }
+
+  function matchesGenre(item: VinylRecord) {
+    return genreFilter.length === 0 || genreTokens(item.genre).some((genre) => genreFilter.includes(genre))
+  }
+
+  function resetFilters() {
+    setYearExact("")
+    setYearFrom("")
+    setYearTo("")
+    setGenreFilter([])
+  }
+
   const filteredItems = records
     .filter((item) => {
       const matchesSearch =
         item.artist.toLowerCase().includes(search.toLowerCase()) ||
         item.album.toLowerCase().includes(search.toLowerCase())
 
+      if (!matchesYear(item) || !matchesGenre(item)) return false
       if (type === "favorites") return item.favorite && matchesSearch
       if (type === "wishlist") return item.status === "wishlist" && matchesSearch
       return item.status === "owned" && matchesSearch
@@ -215,7 +262,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
     })
 
   const sortControl = (
-    <div ref={sortControlRef} style={isMobile ? sortControlStyle : { ...sortControlStyle, flex: "0 0 130px" }}>
+    <div ref={sortControlRef} style={sortControlStyle}>
       <div style={sortMenuContainerStyle}>
         <button
           ref={sortTriggerRef}
@@ -228,10 +275,9 @@ export default function GenericView({ title, type }: GenericViewProps) {
           onKeyDown={(event) => {
             if (event.key === "ArrowDown" || event.key === "ArrowUp") setSortMenuOpen(true)
           }}
-          style={toolbarButtonStyle}
+          style={iconButtonStyle}
         >
           <ArrowDownWideNarrow aria-hidden="true" size={18} strokeWidth={1.8} />
-          <span>Sort</span>
         </button>
         {sortMenuOpen && (
           <div
@@ -288,17 +334,93 @@ export default function GenericView({ title, type }: GenericViewProps) {
       aria-expanded={filterOpen}
       aria-controls={filterOpen ? "record-filter" : undefined}
       onClick={() => setFilterOpen((open) => !open)}
-      style={{ ...toolbarButtonStyle, width: "100%", color: filterOpen || search ? colors.accent : colors.textPrimary }}
+      style={{ ...iconButtonStyle, color: filterOpen || anyFilterActive ? colors.accent : colors.textPrimary }}
     >
       <ListFilter aria-hidden="true" size={18} strokeWidth={1.8} />
-      <span>Filter</span>
     </button>
   )
 
+  const yearInput = (label: string, value: string, onChange: (value: string) => void, disabled = false) => (
+    <label style={{ display: "flex", flexDirection: "column", gap: "4px", flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: "12px" }}>
+      {label}
+      <input
+        type="text"
+        inputMode="numeric"
+        maxLength={4}
+        placeholder="YYYY"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
+        style={{ ...yearInputStyle, opacity: disabled ? 0.5 : 1 }}
+      />
+    </label>
+  )
+
   const filterSearch = filterOpen && (
-    <div ref={filterSearchRef} id="record-filter" style={isMobile ? filterInputStyle : { ...filterInputStyle, right: "auto", width: "300px" }}>
-      <SearchBar compact value={search} onChange={setSearch} />
+    <div ref={filterSearchRef} id="record-filter" role="group" aria-label="Filter by year and genre" style={filterPanelStyle}>
+      {yearInput("Year", yearExact, (value) => { setYearExact(value); setYearFrom(""); setYearTo("") })}
+      <div style={{ display: "flex", gap: "10px" }}>
+        {yearInput("From", yearFrom, (value) => { setYearFrom(value); setYearExact("") })}
+        {yearInput("To", yearTo, (value) => { setYearTo(value); setYearExact("") })}
+      </div>
+      {decades.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {decades.map((decade) => {
+            const active = !yearExact && yearFrom === String(decade) && yearTo === String(decade + 9)
+            return (
+              <button
+                key={decade}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  if (active) { setYearFrom(""); setYearTo("") }
+                  else { setYearExact(""); setYearFrom(String(decade)); setYearTo(String(decade + 9)) }
+                }}
+                style={{ ...decadeChipStyle, background: active ? colors.accentBg : "transparent", color: active ? colors.accent : colors.textPrimary }}
+              >
+                {decade}s
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {genreOptions.length > 0 && (
+        <div role="group" aria-label="Genre" style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {genreOptions.map((genre) => {
+            const active = genreFilter.includes(genre)
+            return (
+              <button
+                key={genre}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setGenreFilter((current) => active ? current.filter((value) => value !== genre) : [...current, genre])}
+                style={{ ...decadeChipStyle, background: active ? colors.accentBg : "transparent", color: active ? colors.accent : colors.textPrimary }}
+              >
+                {genre}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: colors.textSecondary, fontSize: "13px" }}>
+        <span>{filteredItems.length} vinyl{filteredItems.length !== 1 ? "s" : ""}</span>
+        <button type="button" disabled={!anyFilterActive} onClick={resetFilters} style={{ ...decadeChipStyle, opacity: anyFilterActive ? 1 : 0.4, color: colors.textPrimary }}>
+          Reset
+        </button>
+      </div>
     </div>
+  )
+
+  const searchToggle = (
+    <button
+      type="button"
+      aria-label="Search in collection"
+      aria-expanded={searchOpen}
+      onClick={() => setSearchOpen((open) => !open)}
+      style={{ ...iconButtonStyle, color: searchOpen || search ? colors.accent : colors.textPrimary }}
+    >
+      <Search aria-hidden="true" size={18} strokeWidth={1.8} />
+    </button>
   )
 
   function columnHeader(label: string, ascending: SortOrder, descending: SortOrder) {
@@ -319,7 +441,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
   }
 
   const viewToggle = (
-    <div role="group" aria-label="Display mode" style={isMobile ? viewToggleStyle : { ...viewToggleStyle, marginLeft: "auto" }}>
+    <div role="group" aria-label="Display mode" style={{ ...viewToggleStyle, marginLeft: "auto" }}>
       {([["list", List, "List view"], ["grid", LayoutGrid, "Grid view"]] as const).map(([mode, Icon, label]) => (
         <button
           key={mode}
@@ -336,14 +458,24 @@ export default function GenericView({ title, type }: GenericViewProps) {
   )
 
   const filterToolbar = (
-    <div style={toolbarStyle}>
-      <div style={isMobile ? filterControlStyle : { ...filterControlStyle, flex: "0 0 130px" }}>
-        {filterToggle}
-        {filterSearch}
+    <>
+      <div style={toolbarStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+          {searchToggle}
+          <div style={filterControlStyle}>
+            {filterToggle}
+            {filterSearch}
+          </div>
+          {sortControl}
+        </div>
+        {viewToggle}
       </div>
-      {sortControl}
-      {viewToggle}
-    </div>
+      {searchOpen && (
+        <div style={{ width: "100%", marginTop: "8px" }}>
+          <SearchBar compact autoFocus value={search} onChange={setSearch} onEscape={() => setSearchOpen(false)} />
+        </div>
+      )}
+    </>
   )
 
   return (
@@ -416,6 +548,7 @@ export default function GenericView({ title, type }: GenericViewProps) {
             onToggleFlag={() => toggleFavorite(item.id)}
             onMoveToCollection={() => changeStatus(item.id, "owned")}
             onEdit={(record) => setEditId(record.id)}
+            onDelete={(record) => deleteRecord(record.id)}
           />
         ) : (
           <RecordCard
@@ -446,8 +579,40 @@ export default function GenericView({ title, type }: GenericViewProps) {
       {selectedRecord && isMobile && (
         <div style={detailsOverlayStyle} onClick={() => setSelectedRecord(null)}>
           <div
-            style={{ ...modalStyle, maxHeight: "calc(85vh - 65px)", overflowY: "auto" as const }}
+            style={{
+              ...modalStyle,
+              maxHeight: "calc(85vh - 65px)",
+              overflowY: "auto" as const,
+              transform: `translateY(${sheetDragY}px)`,
+              transition: sheetDragging ? "none" : "transform 0.2s ease",
+            }}
             onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => {
+              // Only start a drag when the content is scrolled to the top
+              sheetTouchStartY.current = e.currentTarget.scrollTop <= 0 ? e.touches[0].clientY : null
+            }}
+            onTouchMove={(e) => {
+              if (sheetTouchStartY.current === null) return
+              const delta = e.touches[0].clientY - sheetTouchStartY.current
+              if (delta > 0) {
+                setSheetDragging(true)
+                setSheetDragY(delta)
+              } else if (sheetDragY !== 0) {
+                setSheetDragY(0)
+              }
+            }}
+            onTouchEnd={() => {
+              const shouldClose = sheetDragY > 100
+              sheetTouchStartY.current = null
+              setSheetDragging(false)
+              setSheetDragY(0)
+              if (shouldClose) setSelectedRecord(null)
+            }}
+            onTouchCancel={() => {
+              sheetTouchStartY.current = null
+              setSheetDragging(false)
+              setSheetDragY(0)
+            }}
           >
             {(() => {
               const urls = getListenUrls(selectedRecord.artist, selectedRecord.album)
@@ -596,8 +761,20 @@ const titleStyle = {
 
 const sortControlStyle = {
   display: "flex",
-  flex: 1,
-  minWidth: 0,
+  flex: "0 0 auto",
+}
+
+const iconButtonStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "38px",
+  height: "38px",
+  padding: 0,
+  border: "none",
+  borderRadius: "8px",
+  background: "transparent",
+  cursor: "pointer",
 }
 
 const toolbarStyle = {
@@ -611,43 +788,52 @@ const toolbarStyle = {
   borderTop: `1px solid ${colors.border}`,
 }
 
-const toolbarButtonStyle = {
-  display: "flex",
-  flex: 1,
-  alignItems: "center",
-  justifyContent: "flex-start",
-  gap: "7px",
-  minWidth: 0,
-  padding: "9px 6px",
-  border: "none",
-  borderRadius: "6px",
-  background: "transparent",
-  color: colors.textPrimary,
-  fontSize: "16px",
-  textAlign: "left" as const,
-  whiteSpace: "nowrap" as const,
-  cursor: "pointer",
-}
-
 const filterControlStyle = {
   position: "relative" as const,
-  flex: 1,
-  minWidth: 0,
+  flex: "0 0 auto",
 }
 
-const filterInputStyle = {
+const filterPanelStyle = {
   position: "absolute" as const,
   top: "calc(100% + 4px)",
   left: 0,
-  right: 0,
+  width: "min(300px, calc(100vw - 60px))",
   zIndex: 40,
   boxSizing: "border-box" as const,
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "12px",
+  padding: "14px",
+  maxHeight: "70vh",
+  overflowY: "auto" as const,
+  borderRadius: "10px",
+  border: `1px solid ${colors.border}`,
+  background: colors.card,
+  boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+}
+
+const yearInputStyle = {
+  width: "100%",
+  boxSizing: "border-box" as const,
+  padding: "10px",
+  borderRadius: "8px",
+  border: `1px solid ${colors.border}`,
+  background: colors.bg,
+  color: colors.textPrimary,
+  fontSize: "16px",
+  outline: "none",
+}
+
+const decadeChipStyle = {
+  padding: "6px 10px",
+  borderRadius: "14px",
+  border: `1px solid ${colors.border}`,
+  fontSize: "13px",
+  cursor: "pointer",
 }
 
 const sortMenuContainerStyle = {
   position: "relative" as const,
-  flex: 1,
-  minWidth: 0,
 }
 
 const sortTriggerStyle = {
@@ -672,7 +858,7 @@ const sortOptionsMenuStyle = {
   position: "absolute" as const,
   top: "calc(100% + 4px)",
   left: 0,
-  right: 0,
+  width: "180px",
   zIndex: 40,
   maxHeight: "min(220px, 45vh)",
   overflowY: "auto" as const,
