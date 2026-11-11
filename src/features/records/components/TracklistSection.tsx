@@ -3,6 +3,7 @@ import { colors } from "../../../theme"
 import { fetchRecordDetails } from "../utils/discogs"
 import type { DiscogsReleaseDetails } from "../utils/discogs"
 import Tracklist from "./Tracklist"
+import { useRecordsStore } from "../store/recordsStore"
 
 interface TracklistSectionProps {
   artist: string
@@ -28,7 +29,11 @@ export default function TracklistSection({ artist, album, recordId, discogsRelea
       .then((result) => {
         if (controller.signal.aborted) return
         setDetails(result)
-        onGenreStyle?.(result.genres?.[0] ?? "", result.styles?.[0] ?? "")
+        const genre = result.genres?.[0] ?? ""
+        const style = result.styles?.[0] ?? ""
+        onGenreStyle?.(genre, style)
+        // Keep the stored genre (used by list and filters) aligned with Discogs.
+        void useRecordsStore.getState().syncGenre(recordId, style ? `${genre} / ${style}` : genre)
       })
       .catch(() => {
         if (!controller.signal.aborted) setError("Could not load the tracklist. Please try again.")

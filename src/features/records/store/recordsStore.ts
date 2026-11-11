@@ -19,6 +19,7 @@ interface RecordsStore {
   changeStatus: (id: string, status: "owned" | "wishlist") => Promise<boolean>
   moveToCollection: (id: string) => Promise<boolean>
   setCustomCover: (id: string, photo: RecordPhoto | null) => Promise<boolean>
+  syncGenre: (id: string, genre: string) => Promise<boolean>
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -165,6 +166,28 @@ export const useRecordsStore = create<RecordsStore>((set, get) => ({
   },
 
   moveToCollection: (id) => get().changeStatus(id, "owned"),
+
+  syncGenre: async (id, genre) => {
+    const record = get().records.find((r) => r.id === id)
+    if (!record || !genre || record.genre === genre) return false
+    try {
+      const userId = await getCurrentUserId()
+      const { error } = await supabase
+        .from("records")
+        .update({ genre })
+        .eq("id", id)
+        .eq("user_id", userId)
+      if (error) throw error
+      const apply = (item: VinylRecord): VinylRecord => item.id === id ? { ...item, genre } : item
+      set((state) => ({
+        records: state.records.map(apply),
+        selectedRecord: state.selectedRecord ? apply(state.selectedRecord) : null,
+      }))
+      return true
+    } catch {
+      return false
+    }
+  },
 
   setCustomCover: async (id, photo) => {
     set({ error: null })
