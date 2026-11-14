@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { Check, Plus } from "lucide-react"
+import { Check, ListMusic, Plus } from "lucide-react"
+import Tracklist from "./Tracklist"
 import type { VinylRecord } from "../types/record"
 import { colors } from "../../../theme"
 import {
@@ -32,6 +33,46 @@ const DISCOGS_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN
 const releaseCache = new Map<string, { releases: Release[]; nextPage: number | null }>()
 const formatOptions = ["Vinyl", "LP", '12"', '7"', "CD", "Cassette"]
 
+const tracklistCache = new Map<number, DiscogsReleaseDetails["tracklist"]>()
+
+function ReleaseTracks({ releaseId }: { releaseId: number }) {
+  const [tracks, setTracks] = useState(() => tracklistCache.get(releaseId))
+  const [error, setError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    if (tracklistCache.has(releaseId)) {
+      setTracks(tracklistCache.get(releaseId))
+      return
+    }
+    const controller = new AbortController()
+    setTracks(undefined)
+    setError(false)
+    fetchDiscogsReleaseDetails(releaseId, DISCOGS_TOKEN, controller.signal)
+      .then((details) => {
+        if (controller.signal.aborted) return
+        tracklistCache.set(releaseId, details.tracklist ?? [])
+        setTracks(details.tracklist ?? [])
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError(true)
+      })
+    return () => controller.abort()
+  }, [releaseId, attempt])
+
+  if (error) {
+    return (
+      <div role="alert">
+        <p style={errorStyle}>Could not load the tracklist.</p>
+        <button type="button" onClick={() => setAttempt((current) => current + 1)}>Retry</button>
+      </div>
+    )
+  }
+  if (!tracks) return <p role="status" style={messageStyle}>Loading tracklist...</p>
+  if (tracks.length === 0) return <p style={messageStyle}>No tracklist found</p>
+  return <Tracklist tracks={tracks} />
+}
+
 export default function VinylSearch({ onAdd, isMobile = false, initialArtist = "", initialAlbum = "", alternates }: VinylSearchProps) {
   const artistFieldRef = useRef<HTMLDivElement>(null)
   const releaseSearchRef = useRef<AbortController | null>(null)
@@ -55,6 +96,7 @@ export default function VinylSearch({ onAdd, isMobile = false, initialArtist = "
   const [nextPage, setNextPage] = useState<number | null>(null)
   const [addingId, setAddingId] = useState<number | null>(null)
   const [addError, setAddError] = useState("")
+  const [expandedId, setExpandedId] = useState<number | null>(null)
   const [error, setError] = useState("")
 
   useLayoutEffect(() => {
@@ -433,29 +475,46 @@ export default function VinylSearch({ onAdd, isMobile = false, initialArtist = "
         >
           {releases.map((release, index) => (
             <div key={release.id} style={{ ...releaseItemStyle, borderColor: index === 0 ? colors.accent : colors.border }}>
-              {release.coverUrl ? (
-                <img src={release.coverUrl} alt="" style={coverStyle} />
-              ) : (
-                <span style={coverPlaceholderStyle} aria-hidden="true">♪</span>
-              )}
-              <span style={releaseInfoStyle}>
-                <strong style={albumStyle}>{release.album}</strong>
-                <span style={artistStyle}>{release.artist}</span>
-                <span style={formatStyle}>
-                  {[release.year, ...release.formats].filter(Boolean).join(" · ")}
+              <div style={releaseRowStyle}>
+                {release.coverUrl ? (
+                  <img src={release.coverUrl} alt="" style={coverStyle} />
+                ) : (
+                  <span style={coverPlaceholderStyle} aria-hidden="true">♪</span>
+                )}
+                <span style={releaseInfoStyle}>
+                  <strong style={albumStyle}>{release.album}</strong>
+                  <span style={artistStyle}>{release.artist}</span>
+                  <span style={formatStyle}>
+                    {[release.year, ...release.formats].filter(Boolean).join(" · ")}
+                  </span>
                 </span>
-              </span>
-              {index === 0 && <Check size={18} color={colors.accent} aria-label="Best match" role="img" style={{ flexShrink: 0 }} />}
-              <button
-                type="button"
-                aria-label={`Add ${release.album} by ${release.artist}`}
-                title="Add to my records"
-                disabled={addingId !== null}
-                onClick={() => { void addRelease(release) }}
-                style={addButtonStyle}
-              >
-                {addingId === release.id ? "…" : <Plus size={18} aria-hidden="true" />}
-              </button>
+                {index === 0 && <Check size={18} color={colors.accent} aria-label="Best match" role="img" style={{ flexShrink: 0 }} />}
+                <button
+                  type="button"
+                  aria-label={`${expandedId === release.id ? "Hide" : "Show"} tracks of ${release.album}`}
+                  aria-expanded={expandedId === release.id}
+                  title="Tracklist"
+                  onClick={() => setExpandedId((current) => current === release.id ? null : release.id)}
+                  style={tracksButtonStyle}
+                >
+                  <ListMusic size={18} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Add ${release.album} by ${release.artist}`}
+                  title="Add to my records"
+                  disabled={addingId !== null}
+                  onClick={() => { void addRelease(release) }}
+                  style={addButtonStyle}
+                >
+                  {addingId === release.id ? "…" : <Plus size={18} aria-hidden="true" />}
+                </button>
+              </div>
+              {expandedId === release.id && (
+                <div style={tracksPanelStyle}>
+                  <ReleaseTracks releaseId={release.id} />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -513,14 +572,17 @@ const resultsStyle = {
 const releaseItemStyle = {
   width: "100%",
   boxSizing: "border-box" as const,
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
   padding: "9px",
   textAlign: "left" as const,
   background: colors.card,
   border: `1px solid ${colors.border}`,
   borderRadius: "8px",
+}
+
+const releaseRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
 }
 
 const addButtonStyle = {
@@ -535,6 +597,19 @@ const addButtonStyle = {
   background: colors.accent,
   color: "#fff",
   cursor: "pointer",
+}
+
+const tracksButtonStyle = {
+  ...addButtonStyle,
+  background: "transparent",
+  border: `1px solid ${colors.border}`,
+  color: colors.textSecondary,
+}
+
+const tracksPanelStyle = {
+  marginTop: "8px",
+  maxHeight: "240px",
+  overflowY: "auto" as const,
 }
 
 const coverStyle = {
